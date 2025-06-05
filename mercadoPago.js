@@ -17,7 +17,7 @@ console.log(dotenv)
 
 
 
-const port = 1600; // Asegúrate que el frontend apunte al puerto correcto
+const port = process.env.PORT; // Asegúrate que el frontend apunte al puerto correcto
 
 app.use(morgan('short'));
 
