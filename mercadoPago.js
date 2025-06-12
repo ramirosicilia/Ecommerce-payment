@@ -23,10 +23,8 @@ app.use(morgan('short'));
 
 app.use(cors({
   origin: [
-     process.env.URL_FRONT,
-     process.env.URL_FRONT_VITE1,
-     process.env.URL_FRONT_VITE2
-  
+     process.env.URL_FRONT
+    
   ]
 }));
 
