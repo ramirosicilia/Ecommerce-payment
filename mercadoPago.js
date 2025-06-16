@@ -88,7 +88,8 @@ app.post('/create_preference', async (req, res) => {
 // 🔥 RUTA PARA RECIBIR WEBHOOK DE MERCADO PAGO
 app.post('/orden', async (req, res) => {
   try {
-    const { id, type } = req.body;
+    const { type, data } = req.body;
+    const id = data?.id;
 
     console.log('📩 Webhook recibido en /orden:', req.body);
 
@@ -96,13 +97,11 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Falta id o type en el cuerpo del webhook.' });
     }
 
-    // Solo procesamos si el tipo es 'payment'
     if (type !== 'payment') {
       console.warn(`⚠️ Tipo de webhook no manejado: ${type}`);
-      return res.sendStatus(200); // Respondemos igual para evitar reintentos
+      return res.sendStatus(200);
     }
 
-    // Consultamos a Mercado Pago el pago completo
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
     const mpResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${id}`, {
@@ -115,15 +114,14 @@ app.post('/orden', async (req, res) => {
 
     console.log('✅ Detalles del pago recibido:', pago);
 
-    // Acá podés guardar en DB, enviar correo, actualizar stock, etc.
-    // Por ahora solo devolvemos OK
     res.sendStatus(200);
 
   } catch (error) {
-    console.error('❌ Error al procesar webhook /orden:', error.response?.data || error.message);
+    console.error('❌ Error al procesar webhook /orden:', error?.response?.data || error.message);
     res.sendStatus(500);
   }
 });
+
 
 app.listen(port, () => {
   console.log(`Estoy escuchando el puerto ${port}`);
