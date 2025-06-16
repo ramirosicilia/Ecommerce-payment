@@ -68,9 +68,9 @@ app.post('/create_preference', async (req, res) => {
       })),
       notification_url: "https://mensajeria24hs.site/orden",  // Asegurate de usar /orden
       back_urls: {
-        success: "https://mensajeria24hs.site/",
-        failure: "https://mensajeria24hs.site/",
-        pending: "https://mensajeria24hs.site/"
+        success: process.env.URL_FRONT,
+        failure: process.env.URL_FRONT,
+        pending: process.env.URL_FRONT
       },
       auto_return: "approved"
     };
