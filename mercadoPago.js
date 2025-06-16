@@ -66,7 +66,7 @@ app.post('/create_preference', async (req, res) => {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price)
       })),
-      notification_url: "https://mensajeria24hs.site/orden",  // Asegurate de usar /orden
+      notification_url: `${process.env.URL_FRONT}/orden`,  // Asegurate de usar /orden
       back_urls: {
         success: process.env.URL_FRONT,
         failure: process.env.URL_FRONT,
