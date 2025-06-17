@@ -116,10 +116,14 @@ app.post('/orden', async (req, res) => {
 
     res.sendStatus(200);
 
-  } catch (error) {
-    console.error('❌ Error al procesar webhook /orden:', error?.response?.data || error.message);
-    res.sendStatus(500);
-  }
+  }  catch (error) {
+  console.error('❌ Error al procesar webhook /orden:');
+  console.error('Mensaje:', error.message);
+  console.error('Stack:', error.stack);
+  console.error('Completo:', error);
+  res.status(500).json({ error: 'Error interno', detalle: error.message });
+}
+
 });
 
 
