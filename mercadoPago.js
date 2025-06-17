@@ -100,105 +100,111 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
-// 🔔 Webhook de MercadoPago
 app.post('/orden', async (req, res) => {
   try {
-    const { type, data } = req.body;
+    const { type, action, data } = req.body;
     const id = data?.id;
 
     console.log('📩 Webhook recibido en /orden:', req.body);
 
-    if (!id || !type) {
-      return res.status(400).json({ error: 'Falta id o type en el cuerpo del webhook.' });
+    if (!id || !type || !action) {
+      return res.status(400).json({ error: 'Faltan datos en el webhook.' });
     }
 
-    if (type !== 'payment') {
-      console.warn(`⚠️ Tipo de webhook no manejado: ${type}`);
+    // ✅ Validar que sea un pago creado
+    if (type !== 'payment' || action !== 'payment.created') {
+      console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
     }
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
-    const mpResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${id}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
+    // ✅ Consultar el pago a la API para obtener datos completos
+    const mpResponse = await axios.get(
+      `https://api.mercadopago.com/v1/payments/${id}`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
       }
-    });
+    );
 
     const pago = mpResponse.data;
 
-   if (pago.status === 'approved') {
-  const carrito = pago.metadata.carrito;
-  const user_id = pago.metadata.user_id;
-  const total = pago.metadata.total;
-
-  // Insertar pedido y obtener el UUID generado automáticamente
-  const { data: pedidoInsertado, error: errorPedido } = await supabase
-    .from('pedidos')
-    .insert([{
-      usuario_id: user_id,
-      total,
-      estado: 'pagado',
-      fecha_creacion: new Date().toISOString(),
-      fecha_actualizacion: new Date().toISOString()
-    }])
-    .select('pedido_id')
-    .single();
-
-  if (errorPedido || !pedidoInsertado) {
-    console.error('❌ Error al insertar el pedido:', errorPedido);
-    return res.status(500).json({ error: 'No se pudo insertar el pedido' });
-  }
-
-  const pedido_id = pedidoInsertado.pedido_id; // 🟢 UUID generado por Supabase
-
-  for (const item of carrito) {
-    const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
-
-    const { data: variantes, error } = await supabase
-      .from('producto_variantes')
-      .select('variante_id, stock')
-      .match({ producto_id, color_id, talle_id });
-
-    if (error || !variantes || variantes.length === 0) {
-      console.error('No se encontró variante para:', item);
-      continue;
+    // ✅ Procesar solo si el pago fue aprobado
+    if (pago.status !== 'approved') {
+      console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
+      return res.sendStatus(200);
     }
 
-    const variante = variantes[0];
-    const nuevoStock = variante.stock - cantidad;
+    const carrito = pago.metadata.carrito;
+    const user_id = pago.metadata.user_id;
+    const total = pago.metadata.total;
 
-    if (nuevoStock < 0) {
-      console.warn('⚠️ Stock insuficiente para', producto_id);
-      continue;
+    // Insertar pedido y obtener UUID generado automáticamente
+    const { data: pedidoInsertado, error: errorPedido } = await supabase
+      .from('pedidos')
+      .insert([{
+        usuario_id: user_id,
+        total,
+        estado: 'pagado',
+        fecha_creacion: new Date().toISOString(),
+        fecha_actualizacion: new Date().toISOString()
+      }])
+      .select('pedido_id')
+      .single();
+
+    if (errorPedido || !pedidoInsertado) {
+      console.error('❌ Error al insertar el pedido:', errorPedido);
+      return res.status(500).json({ error: 'No se pudo insertar el pedido' });
     }
 
-    // Actualizar stock
-    await supabase
-      .from('producto_variantes')
-      .update({ stock: nuevoStock })
-      .eq('variante_id', variante.variante_id);
+    const pedido_id = pedidoInsertado.pedido_id;
 
-    // Insertar en detalle_pedidos
-    await supabase.from('detalle_pedidos').insert([{
-      pedido_id: pedido_id,
-      variante_id: variante.variante_id,
-      cantidad: cantidad,
-      precio_unitario: unit_price
-    }]);
-  }
+    for (const item of carrito) {
+      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
 
-  console.log(`✅ Pedido ${pedido_id} registrado con éxito.`);
-}
+      const { data: variantes, error } = await supabase
+        .from('producto_variantes')
+        .select('variante_id, stock')
+        .match({ producto_id, color_id, talle_id });
 
-res.sendStatus(200);
+      if (error || !variantes || variantes.length === 0) {
+        console.error('❌ Variante no encontrada para:', item);
+        continue;
+      }
 
+      const variante = variantes[0];
+      const nuevoStock = variante.stock - cantidad;
+
+      if (nuevoStock < 0) {
+        console.warn('⚠️ Stock insuficiente para producto', producto_id);
+        continue;
+      }
+
+      // Actualizar stock
+      await supabase
+        .from('producto_variantes')
+        .update({ stock: nuevoStock })
+        .eq('variante_id', variante.variante_id);
+
+      // Insertar detalle del pedido
+      await supabase.from('detalle_pedidos').insert([{
+        pedido_id: pedido_id,
+        variante_id: variante.variante_id,
+        cantidad: cantidad,
+        precio_unitario: unit_price
+      }]);
+    }
+
+    console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
+    return res.sendStatus(200);
 
   } catch (error) {
     console.error('❌ Error al procesar webhook /orden:');
     console.error('Mensaje:', error.message);
     console.error('Stack:', error.stack);
-    res.status(500).json({ error: 'Error interno', detalle: error.message });
+    return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
 
