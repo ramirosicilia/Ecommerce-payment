@@ -129,7 +129,14 @@ app.post('/orden', async (req, res) => {
       }
     );
 
-    const pago = mpResponse.data;
+    const pago = mpResponse.data; 
+    console.log('🔍 Metadata recibida:', pago.metadata);
+
+    if (!pago.metadata) {
+      console.warn('⚠️ Metadata no presente en el pago, aún no disponible.');
+      return res.sendStatus(200);
+    }
+
 
     // ✅ Procesar solo si el pago fue aprobado
     if (pago.status !== 'approved') {
@@ -139,7 +146,10 @@ app.post('/orden', async (req, res) => {
 
     const carrito = pago.metadata.carrito;
     const user_id = pago.metadata.user_id;
-    const total = pago.metadata.total;
+    const total = pago.metadata.total; 
+    console.log('total',total) 
+    console.log(user_id,"user_id") 
+    console.log(carrito,'carrito')
 
     // Insertar pedido y obtener UUID generado automáticamente
     const { data: pedidoInsertado, error: errorPedido } = await supabase
