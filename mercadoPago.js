@@ -61,21 +61,27 @@ app.post('/create_preference', async (req, res) => {
       if (!item.id) {
         return res.status(400).json({ error: 'Algún producto no tiene id.' });
       }
-    }
-
-    const body = {
-      items: mp.map(item => ({
-        id: item.producto_id,
-        title: item.name,
-        quantity: Number(item.quantity),
-        unit_price: Number(item.unit_price)
-      })),
+     }
+ 
+     const body = {
+       items: mp.map(item => ({
+         id: item.producto_id,
+         title: item.name,
+         quantity: Number(item.quantity),
+         unit_price: Number(item.unit_price)
+       })),
       metadata: {
-        carrito: mp,
-        user_id: ecommerce.user_id,
-        total: ecommerce.total
-      },
-      notification_url: `${process.env.URL_FRONT}/orden`,
+     carrito: mp.map(item => ({
+       producto_id: item.producto_id,
+       color_id: item.color_id,
+       talle_id: item.talle_id,
+       cantidad: item.quantity,
+       unit_price: item.unit_price  // 🟢 AGREGALO AQUÍ
+     })),
+     user_id: ecommerce.user_id,
+     total: ecommerce.total
+   },
+       notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
@@ -121,63 +127,72 @@ app.post('/orden', async (req, res) => {
 
     const pago = mpResponse.data;
 
-    if (pago.status === 'approved') {
-      const carrito = pago.metadata.carrito;
-      const user_id = pago.metadata.user_id;
-      const total = pago.metadata.total;
+   if (pago.status === 'approved') {
+  const carrito = pago.metadata.carrito;
+  const user_id = pago.metadata.user_id;
+  const total = pago.metadata.total;
 
-      const pedido_id = pago.id.toString();
+  // Insertar pedido y obtener el UUID generado automáticamente
+  const { data: pedidoInsertado, error: errorPedido } = await supabase
+    .from('pedidos')
+    .insert([{
+      usuario_id: user_id,
+      total,
+      estado: 'pagado',
+      fecha_creacion: new Date().toISOString(),
+      fecha_actualizacion: new Date().toISOString()
+    }])
+    .select('pedido_id')
+    .single();
 
-      // Insertar pedido
-      await supabase.from('pedidos').insert([{
-        pedido_id: pedido_id,
-        usuario_id: user_id,
-        total,
-        estado: 'pagado',
-        fecha_creacion: new Date().toISOString(),
-        fecha_actualizacion: new Date().toISOString()
-      }]);
+  if (errorPedido || !pedidoInsertado) {
+    console.error('❌ Error al insertar el pedido:', errorPedido);
+    return res.status(500).json({ error: 'No se pudo insertar el pedido' });
+  }
 
-      for (const item of carrito) {
-        const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+  const pedido_id = pedidoInsertado.pedido_id; // 🟢 UUID generado por Supabase
 
-        const { data: variantes, error } = await supabase
-          .from('producto_variantes')
-          .select('variante_id, stock')
-          .match({ producto_id, color_id, talle_id });
+  for (const item of carrito) {
+    const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
 
-        if (error || !variantes || variantes.length === 0) {
-          console.error('No se encontró variante para:', item);
-          continue;
-        }
+    const { data: variantes, error } = await supabase
+      .from('producto_variantes')
+      .select('variante_id, stock')
+      .match({ producto_id, color_id, talle_id });
 
-        const variante = variantes[0];
-        const nuevoStock = variante.stock - cantidad;
-
-        if (nuevoStock < 0) {
-          console.warn('⚠️ Stock insuficiente para', producto_id);
-          continue;
-        }
-
-        // Actualizar stock
-        await supabase
-          .from('producto_variantes')
-          .update({ stock: nuevoStock })
-          .eq('variante_id', variante.variante_id);
-
-        // Insertar detalle_pedido
-        await supabase.from('detalle_pedidos').insert([{
-          pedido_id: pedido_id,
-          variante_id: variante.variante_id,
-          cantidad: cantidad,
-          precio_unitario: unit_price
-        }]);
-      }
-
-      console.log(`✅ Pedido ${pedido_id} registrado con éxito.`);
+    if (error || !variantes || variantes.length === 0) {
+      console.error('No se encontró variante para:', item);
+      continue;
     }
 
-    res.sendStatus(200);
+    const variante = variantes[0];
+    const nuevoStock = variante.stock - cantidad;
+
+    if (nuevoStock < 0) {
+      console.warn('⚠️ Stock insuficiente para', producto_id);
+      continue;
+    }
+
+    // Actualizar stock
+    await supabase
+      .from('producto_variantes')
+      .update({ stock: nuevoStock })
+      .eq('variante_id', variante.variante_id);
+
+    // Insertar en detalle_pedidos
+    await supabase.from('detalle_pedidos').insert([{
+      pedido_id: pedido_id,
+      variante_id: variante.variante_id,
+      cantidad: cantidad,
+      precio_unitario: unit_price
+    }]);
+  }
+
+  console.log(`✅ Pedido ${pedido_id} registrado con éxito.`);
+}
+
+res.sendStatus(200);
+
 
   } catch (error) {
     console.error('❌ Error al procesar webhook /orden:');
