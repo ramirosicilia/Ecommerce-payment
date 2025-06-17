@@ -102,7 +102,7 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
+    const accessToken = process.env.Access_Token;
 
     const mpResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${id}`, {
       headers: {
