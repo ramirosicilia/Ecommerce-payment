@@ -49,6 +49,7 @@ app.get('/', (req, res) => {
 app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
+    console.log(ecommerce,'este es el ecommerce')
 
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
