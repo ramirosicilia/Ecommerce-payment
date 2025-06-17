@@ -78,8 +78,8 @@ app.post('/create_preference', async (req, res) => {
        cantidad: item.quantity,
        unit_price: item.unit_price  // 🟢 AGREGALO AQUÍ
      })),
-     user_id: ecommerce.user_id,
-     total: ecommerce.total
+     user_id: ecommerce[0].user_id,
+      total: mp.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
    },
        notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
