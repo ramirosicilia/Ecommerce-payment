@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
+import { supabase } from './DB.js';
 
 
 const app = express();  
@@ -42,23 +43,25 @@ const preference = new Preference(client);
 
  
 
+
 app.get('/', (req, res) => {
   res.send('soy el server');
 });
 
+// 🧾 Crear preferencia de pago
 app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
-    console.log(ecommerce,'este es el ecommerce')
 
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
     }
+
     for (const item of mp) {
       if (!item.id) {
         return res.status(400).json({ error: 'Algún producto no tiene id.' });
       }
-    } 
+    }
 
     const body = {
       items: mp.map(item => ({
@@ -67,9 +70,14 @@ app.post('/create_preference', async (req, res) => {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price)
       })),
-      notification_url: `${process.env.URL_FRONT}/orden`,  // Asegurate de usar /orden
+      metadata: {
+        carrito: mp,
+        user_id: ecommerce.user_id,
+        total: ecommerce.total
+      },
+      notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
-        success:`${process.env.URL_FRONT}/compraRealizada.html`,
+        success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
         pending: `${process.env.URL_FRONT}/productosUsuario.html`,
       },
@@ -78,7 +86,7 @@ app.post('/create_preference', async (req, res) => {
 
     const result = await preference.create({ body });
 
-      res.json({ id: result.id }); // corregido aquí
+    res.json({ id: result.id });
 
   } catch (error) {
     console.error("Error al crear la preferencia:", error);
@@ -86,7 +94,7 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
-// 🔥 RUTA PARA RECIBIR WEBHOOK DE MERCADO PAGO
+// 🔔 Webhook de MercadoPago
 app.post('/orden', async (req, res) => {
   try {
     const { type, data } = req.body;
@@ -113,21 +121,73 @@ app.post('/orden', async (req, res) => {
 
     const pago = mpResponse.data;
 
-    console.log('✅ Detalles del pago recibido:', pago);
+    if (pago.status === 'approved') {
+      const carrito = pago.metadata.carrito;
+      const user_id = pago.metadata.user_id;
+      const total = pago.metadata.total;
+
+      const pedido_id = pago.id.toString();
+
+      // Insertar pedido
+      await supabase.from('pedidos').insert([{
+        pedido_id: pedido_id,
+        usuario_id: user_id,
+        total,
+        estado: 'pagado',
+        fecha_creacion: new Date().toISOString(),
+        fecha_actualizacion: new Date().toISOString()
+      }]);
+
+      for (const item of carrito) {
+        const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+
+        const { data: variantes, error } = await supabase
+          .from('producto_variantes')
+          .select('variante_id, stock')
+          .match({ producto_id, color_id, talle_id });
+
+        if (error || !variantes || variantes.length === 0) {
+          console.error('No se encontró variante para:', item);
+          continue;
+        }
+
+        const variante = variantes[0];
+        const nuevoStock = variante.stock - cantidad;
+
+        if (nuevoStock < 0) {
+          console.warn('⚠️ Stock insuficiente para', producto_id);
+          continue;
+        }
+
+        // Actualizar stock
+        await supabase
+          .from('producto_variantes')
+          .update({ stock: nuevoStock })
+          .eq('variante_id', variante.variante_id);
+
+        // Insertar detalle_pedido
+        await supabase.from('detalle_pedidos').insert([{
+          pedido_id: pedido_id,
+          variante_id: variante.variante_id,
+          cantidad: cantidad,
+          precio_unitario: unit_price
+        }]);
+      }
+
+      console.log(`✅ Pedido ${pedido_id} registrado con éxito.`);
+    }
 
     res.sendStatus(200);
 
-  }  catch (error) {
-  console.error('❌ Error al procesar webhook /orden:');
-  console.error('Mensaje:', error.message);
-  console.error('Stack:', error.stack);
-  console.error('Completo:', error);
-  res.status(500).json({ error: 'Error interno', detalle: error.message });
-}
-
+  } catch (error) {
+    console.error('❌ Error al procesar webhook /orden:');
+    console.error('Mensaje:', error.message);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ error: 'Error interno', detalle: error.message });
+  }
 });
 
-
+// 🚀 Iniciar servidor
 app.listen(port, () => {
   console.log(`Estoy escuchando el puerto ${port}`);
 });
