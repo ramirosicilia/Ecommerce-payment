@@ -69,7 +69,7 @@ app.post('/create_preference', async (req, res) => {
       })),
       notification_url: `${process.env.URL_FRONT}/orden`,  // Asegurate de usar /orden
       back_urls: {
-        success:`${process.env.URL_FRONT}/productosUsuario.html`,
+        success:`${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
         pending: `${process.env.URL_FRONT}/productosUsuario.html`,
       },
