@@ -160,7 +160,8 @@ app.post('/create_preference', async (req, res) => {
     };
 
     const result = await preference.create({ body }); 
-    console.log('🆔 preference creado:', result.id);
+    console.log('🆔 preference creado:', result.id); 
+    body.metadata.preference_id = result.id;
 
     await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
