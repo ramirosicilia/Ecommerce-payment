@@ -86,25 +86,24 @@ app.post('/create_preference', async (req, res) => {
     }
 
     // 📤 Crear preferencia en MercadoPago
-    const body = {
-      items: mp.map(item => ({
-        id: item.producto_id,
-        title: item.name,
-        quantity: Number(item.quantity),
-        unit_price: Number(item.unit_price)
-      })),
-      external_reference,
-      notification_url: `${process.env.URL_FRONT}/orden`,
-      back_urls: {
-        success: `${process.env.URL_FRONT}/compraRealizada.html`,
-        failure: `${process.env.URL_FRONT}/productosUsuario.html`,
-        pending: `${process.env.URL_FRONT}/productosUsuario.html`
-      },
-      auto_return: "approved"
-    };
+    const preference = {
+  items: mp.map(item => ({
+    id: item.producto_id,
+    title: item.name,
+    quantity: Number(item.quantity),
+    unit_price: Number(item.unit_price),
+  })),
+  external_reference, // 👈 Muy importante, fuera de items
+  notification_url: `${process.env.URL_FRONT}/orden`,
+  back_urls: {
+    success: `${process.env.URL_FRONT}/compraRealizada.html`,
+    failure: `${process.env.URL_FRONT}/productosUsuario.html`,
+    pending: `${process.env.URL_FRONT}/productosUsuario.html`
+  },
+  auto_return: "approved"
+};
 
-    const result = await preference.create({ body });
-
+const result = await preference.create({ body: preference });
     res.json({ id: result.id });
 
   } catch (error) {
