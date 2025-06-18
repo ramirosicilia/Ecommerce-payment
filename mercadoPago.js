@@ -86,7 +86,7 @@ app.post('/create_preference', async (req, res) => {
     }
 
     // 📤 Crear preferencia en MercadoPago
-    const preference = {
+     preference = {
   items: mp.map(item => ({
     id: item.producto_id,
     title: item.name,
