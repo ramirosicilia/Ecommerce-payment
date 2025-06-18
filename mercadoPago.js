@@ -62,6 +62,8 @@ app.post('/create_preference', async (req, res) => {
     }));
 
     const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
+    const user_id = ecommerce[0].user_id;
+    const preference_id = crypto.randomUUID(); // ✅ lo generamos nosotros
 
     const body = {
       items: mp.map(item => ({
@@ -76,34 +78,30 @@ app.post('/create_preference', async (req, res) => {
         pending: `${process.env.URL_FRONT}/productosUsuario.html`
       },
       notification_url: `${process.env.URL_BACK}/orden`,
-      auto_return: "approved"
+      auto_return: "approved",
+      metadata: {
+        carrito: carritoFormateado,
+        user_id,
+        total,
+        preference_id
+      },
+      external_reference: preference_id // 👈 también lo metemos aquí por si acaso
     };
 
     const result = await preference.create({ body });
 
-    // 🔐 Guardamos el preference_id en metadata
-    await preference.update({
-      id: result.id,
-      body: {
-        metadata: {
-          carrito: carritoFormateado,
-          user_id: ecommerce[0].user_id,
-          total,
-          preference_id: result.id
-        }
-      }
-    });
-
     // 📝 Guardar carrito temporal
     await supabase.from('carritos_temporales').insert([{
-      preference_id: result.id,
-      user_id: ecommerce[0].user_id,
+      preference_id,
+      user_id,
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
 
     console.log('🆗 Preferencia creada con ID:', result.id);
+    console.log('📦 Preference ID asignado (manual):', preference_id);
+
     res.json({ id: result.id });
 
   } catch (error) {
