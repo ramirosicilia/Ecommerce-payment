@@ -91,78 +91,9 @@ app.post('/create_preference', async (req, res) => {
       auto_return: "approved"
     };
 
-    const result = await preference.create({ body }); 
-    console.log('🆔 preference creado:', result.id);
-
+    const result = await preference.create({ body });
 
     // ✅ Guardar carrito temporal en la base de datos
-    await supabase.from('carritos_temporales').insert([{
-      preference_id: result.id,
-      user_id: ecommerce[0].user_id,
-      carrito: carritoFormateado,
-      total,
-      fecha_creacion: new Date().toISOString()
-    }]);
-
-    res.json({ id: result.id });
-
-  } catch (error) {
-    console.error("Error al crear la preferencia:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 📩 Webhook
-// 🧾 Crear preferencia de pago
-app.post('/create_preference', async (req, res) => {
-  try {
-    const { mp, ecommerce } = req.body;
-
-    if (!Array.isArray(mp) || mp.length === 0) {
-      return res.status(400).json({ error: 'No hay productos en la compra.' });
-    }
-
-    for (const item of mp) {
-      if (!item.id) {
-        return res.status(400).json({ error: 'Algún producto no tiene id.' });
-      }
-    }
-
-    const carritoFormateado = mp.map(item => ({
-      producto_id: item.producto_id,
-      color_id: item.color_id,
-      talle_id: item.talle_id,
-      cantidad: item.quantity,
-      unit_price: item.unit_price
-    }));
-
-    const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
-
-    const body = {
-      items: mp.map(item => ({
-        id: item.producto_id,
-        title: item.name,
-        quantity: Number(item.quantity),
-        unit_price: Number(item.unit_price)
-      })),
-      metadata: {
-        carrito: carritoFormateado,
-        user_id: ecommerce[0].user_id,
-        total
-      },
-      notification_url: `${process.env.URL_BACK}/orden`,  // 🛠 corregido si lo apuntabas mal
-      back_urls: {
-        success: `${process.env.URL_FRONT}/compraRealizada.html`,
-        failure: `${process.env.URL_FRONT}/productosUsuario.html`,
-        pending: `${process.env.URL_FRONT}/productosUsuario.html`
-      },
-      auto_return: "approved"
-    };
-
-    const result = await preference.create({ body }); 
-    console.log('🆔 preference creado:', result.id); 
-    body.metadata.preference_id = result.id;
-
     await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
       user_id: ecommerce[0].user_id,
@@ -214,8 +145,10 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const preferenceId = pago.preference_id;
-    console.log('📌 preference_id obtenido del webhook:', preferenceId);
+    // 🟡 Obtener el preference_id de distintas posibles fuentes
+    const preferenceId = pago.metadata?.preference_id ||
+                         pago.additional_info?.preference_id ||
+                         pago.order?.id;
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
@@ -241,7 +174,7 @@ app.post('/orden', async (req, res) => {
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
 
-    // ✅ Insertar pedido
+    // Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -295,14 +228,8 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
-    // ✅ Limpieza y opcionalmente guardamos el payment_id
-    await supabase
-      .from('carritos_temporales')
-      .update({ payment_id: id }) // <- lo guardamos si querés dejar trazabilidad
-      .eq('preference_id', preferenceId);
-
-    await supabase
-      .from('carritos_temporales')
+    // ✅ Limpieza
+    await supabase.from('carritos_temporales')
       .delete()
       .eq('preference_id', preferenceId);
 
