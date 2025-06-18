@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
+import { randomUUID } from 'crypto';
+
 
 
 const app = express();  
@@ -63,7 +65,8 @@ app.post('/create_preference', async (req, res) => {
 
     const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
     const user_id = ecommerce[0].user_id;
-    const preference_id = crypto.randomUUID(); // ✅ lo generamos nosotros
+   const preference_id = randomUUID();
+
 
     const body = {
       items: mp.map(item => ({
@@ -83,9 +86,9 @@ app.post('/create_preference', async (req, res) => {
         carrito: carritoFormateado,
         user_id,
         total,
-        preference_id
+        preference_id // 👈 queda en el pago
       },
-      external_reference: preference_id // 👈 también lo metemos aquí por si acaso
+      external_reference: preference_id // 👈 respaldo por si MercadoPago no devuelve metadata
     };
 
     const result = await preference.create({ body });
@@ -99,8 +102,8 @@ app.post('/create_preference', async (req, res) => {
       fecha_creacion: new Date().toISOString()
     }]);
 
-    console.log('🆗 Preferencia creada con ID:', result.id);
-    console.log('📦 Preference ID asignado (manual):', preference_id);
+    console.log('🆗 Preferencia creada con ID MercadoPago:', result.id);
+    console.log('🔐 Preference ID interno (UUID):', preference_id);
 
     res.json({ id: result.id });
 
@@ -136,11 +139,12 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    const preferenceId = pago.metadata?.preference_id;
+    // ✅ Fallback a external_reference si no vino en metadata
+    const preferenceId = pago.metadata?.preference_id || pago.external_reference;
 
     if (!preferenceId) {
-      console.error('❌ No se pudo obtener el preference_id desde metadata del pago.');
-      return res.status(400).json({ error: 'Falta preference_id en metadata.' });
+      console.error('❌ No se pudo obtener preference_id ni desde metadata ni desde external_reference.');
+      return res.status(400).json({ error: 'Falta preference_id.' });
     }
 
     const { data: carritoTemp, error: errorTemp } = await supabase
@@ -227,7 +231,8 @@ app.post('/orden', async (req, res) => {
   }
 });
 
-// 🚀 SERVIDOR
+
+
 app.listen(port, () => {
   console.log(`Servidor escuchando en puerto ${port}`);
 });
