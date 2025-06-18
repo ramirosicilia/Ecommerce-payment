@@ -49,6 +49,7 @@ app.get('/', (req, res) => {
 });
 
 // 🧾 Crear preferencia de pago
+// 📦 Crear preferencia de pago con MercadoPago
 app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
@@ -57,6 +58,7 @@ app.post('/create_preference', async (req, res) => {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
     }
 
+    // Validación de productos
     for (const item of mp) {
       if (!item.id) {
         return res.status(400).json({ error: 'Algún producto no tiene id.' });
@@ -64,9 +66,11 @@ app.post('/create_preference', async (req, res) => {
     }
 
     const total = mp.reduce((acc, item) => acc + item.quantity * item.unit_price, 0);
+
+    // 🆔 Generar referencia única para identificar la orden
     const external_reference = `carrito-${ecommerce[0].user_id}-${Date.now()}`;
 
-    // Guardar carrito temporalmente en Supabase
+    // 💾 Guardar carrito en tabla temporal
     const { error: errorCarrito } = await supabase
       .from('carritos_temporales')
       .insert([{
@@ -81,6 +85,7 @@ app.post('/create_preference', async (req, res) => {
       return res.status(500).json({ error: 'Error al guardar el carrito' });
     }
 
+    // 📤 Crear preferencia en MercadoPago
     const body = {
       items: mp.map(item => ({
         id: item.producto_id,
@@ -103,12 +108,13 @@ app.post('/create_preference', async (req, res) => {
     res.json({ id: result.id });
 
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
+    console.error("❌ Error al crear la preferencia:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 
+// 🔁 Webhook MercadoPago (procesa el pago aprobado)
 app.post('/orden', async (req, res) => {
   try {
     const { type, action, data } = req.body;
@@ -116,17 +122,15 @@ app.post('/orden', async (req, res) => {
 
     console.log('📩 Webhook recibido en /orden:', req.body);
 
-    if (!id || !type || !action) {
-      return res.status(400).json({ error: 'Faltan datos en el webhook.' });
-    }
-
-    if (type !== 'payment' || action !== 'payment.created') {
+    // Filtrar tipo de evento correcto
+    if (!id || type !== 'payment' || action !== 'payment.created') {
       console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
     }
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
+    // 📥 Consultar el pago completo con metadata
     const mpResponse = await axios.get(
       `https://api.mercadopago.com/v1/payments/${id}`,
       {
@@ -148,6 +152,7 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
+    // 🔎 Buscar el carrito temporal en Supabase
     const { data: carritoTemporal, error: errorBuscar } = await supabase
       .from('carritos_temporales')
       .select('*')
@@ -163,6 +168,7 @@ app.post('/orden', async (req, res) => {
     const user_id = carritoTemporal.user_id;
     const total = carritoTemporal.total;
 
+    // 🧾 Insertar nuevo pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -182,9 +188,11 @@ app.post('/orden', async (req, res) => {
 
     const pedido_id = pedidoInsertado.pedido_id;
 
+    // 🔄 Procesar cada ítem del carrito
     for (const item of carrito) {
       const { producto_id, color_id, talle_id, quantity, unit_price } = item;
 
+      // 🟠 Obtener variante correspondiente
       const { data: variantes, error } = await supabase
         .from('producto_variantes')
         .select('variante_id, stock')
@@ -203,11 +211,13 @@ app.post('/orden', async (req, res) => {
         continue;
       }
 
+      // 📉 Actualizar stock
       await supabase
         .from('producto_variantes')
         .update({ stock: nuevoStock })
         .eq('variante_id', variante.variante_id);
 
+      // 🧾 Insertar detalle del pedido
       await supabase.from('detalle_pedidos').insert([{
         pedido_id,
         variante_id: variante.variante_id,
@@ -226,6 +236,7 @@ app.post('/orden', async (req, res) => {
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
+
 
 // 🚀 Iniciar servidor
 app.listen(port, () => {
