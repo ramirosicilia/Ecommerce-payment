@@ -91,7 +91,9 @@ app.post('/create_preference', async (req, res) => {
       auto_return: "approved"
     };
 
-    const result = await preference.create({ body });
+    const result = await preference.create({ body }); 
+    console.log('🆔 preference creado:', result.id);
+
 
     // ✅ Guardar carrito temporal en la base de datos
     await supabase.from('carritos_temporales').insert([{
@@ -148,7 +150,8 @@ app.post('/orden', async (req, res) => {
     // 🟡 Obtener el preference_id de distintas posibles fuentes
     const preferenceId = pago.metadata?.preference_id ||
                          pago.additional_info?.preference_id ||
-                         pago.order?.id;
+                         pago.order?.id; 
+                         console.log('este es el preference id', preferenceId)
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
