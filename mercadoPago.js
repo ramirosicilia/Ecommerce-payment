@@ -113,6 +113,72 @@ app.post('/create_preference', async (req, res) => {
 });
 
 // 📩 Webhook
+// 🧾 Crear preferencia de pago
+app.post('/create_preference', async (req, res) => {
+  try {
+    const { mp, ecommerce } = req.body;
+
+    if (!Array.isArray(mp) || mp.length === 0) {
+      return res.status(400).json({ error: 'No hay productos en la compra.' });
+    }
+
+    for (const item of mp) {
+      if (!item.id) {
+        return res.status(400).json({ error: 'Algún producto no tiene id.' });
+      }
+    }
+
+    const carritoFormateado = mp.map(item => ({
+      producto_id: item.producto_id,
+      color_id: item.color_id,
+      talle_id: item.talle_id,
+      cantidad: item.quantity,
+      unit_price: item.unit_price
+    }));
+
+    const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
+
+    const body = {
+      items: mp.map(item => ({
+        id: item.producto_id,
+        title: item.name,
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price)
+      })),
+      metadata: {
+        carrito: carritoFormateado,
+        user_id: ecommerce[0].user_id,
+        total
+      },
+      notification_url: `${process.env.URL_BACK}/orden`,  // 🛠 corregido si lo apuntabas mal
+      back_urls: {
+        success: `${process.env.URL_FRONT}/compraRealizada.html`,
+        failure: `${process.env.URL_FRONT}/productosUsuario.html`,
+        pending: `${process.env.URL_FRONT}/productosUsuario.html`
+      },
+      auto_return: "approved"
+    };
+
+    const result = await preference.create({ body }); 
+    console.log('🆔 preference creado:', result.id);
+
+    await supabase.from('carritos_temporales').insert([{
+      preference_id: result.id,
+      user_id: ecommerce[0].user_id,
+      carrito: carritoFormateado,
+      total,
+      fecha_creacion: new Date().toISOString()
+    }]);
+
+    res.json({ id: result.id });
+
+  } catch (error) {
+    console.error("Error al crear la preferencia:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 📩 Webhook
 app.post('/orden', async (req, res) => {
   try {
     const { type, action, data } = req.body;
@@ -147,19 +213,16 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // 🟡 Obtener el preference_id de distintas posibles fuentes
-    const preferenceId = pago.metadata?.preference_id ||
-                         pago.additional_info?.preference_id ||
-                         pago.order?.id; 
-                         console.log('este es el preference id', preferenceId)
+    // ✅ Obtener preference_id desde metadata (corregido)
+    const preferenceId = pago.metadata?.preference_id || pago.additional_info?.preference_id;
+    console.log('📌 preference_id obtenido del webhook:', preferenceId);
 
     if (!preferenceId) {
-      console.error('❌ No se pudo obtener el preference_id desde el pago.');
+      console.error('❌ No se pudo obtener el preference_id desde metadata.');
       return res.status(400).json({ error: 'Falta preference_id' });
-    } 
+    }
 
-     console.log('🔎 Pago completoooooo:', JSON.stringify(pago, null, 2));
-
+    console.log('🔎 Pago completoooooo:', JSON.stringify(pago, null, 2));
 
     // ✅ Buscar carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
