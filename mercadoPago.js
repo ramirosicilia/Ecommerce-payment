@@ -214,16 +214,13 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // ✅ Obtener preference_id desde metadata (corregido)
-    const preferenceId = pago.metadata?.preference_id || pago.additional_info?.preference_id;
+    const preferenceId = pago.preference_id;
     console.log('📌 preference_id obtenido del webhook:', preferenceId);
 
     if (!preferenceId) {
-      console.error('❌ No se pudo obtener el preference_id desde metadata.');
+      console.error('❌ No se pudo obtener el preference_id desde el pago.');
       return res.status(400).json({ error: 'Falta preference_id' });
     }
-
-    console.log('🔎 Pago completoooooo:', JSON.stringify(pago, null, 2));
 
     // ✅ Buscar carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
@@ -244,7 +241,7 @@ app.post('/orden', async (req, res) => {
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
 
-    // Insertar pedido
+    // ✅ Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -298,8 +295,14 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
-    // ✅ Limpieza
-    await supabase.from('carritos_temporales')
+    // ✅ Limpieza y opcionalmente guardamos el payment_id
+    await supabase
+      .from('carritos_temporales')
+      .update({ payment_id: id }) // <- lo guardamos si querés dejar trazabilidad
+      .eq('preference_id', preferenceId);
+
+    await supabase
+      .from('carritos_temporales')
       .delete()
       .eq('preference_id', preferenceId);
 
