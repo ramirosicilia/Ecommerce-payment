@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
+import { randomUUID } from 'crypto'; // ✅ Generador UUID único
+
 
 
 const app = express();  
@@ -40,6 +42,7 @@ const preference = new Preference(client);
 
 console.log("token", process.env.MERCADO_PAGO_ACCESS_TOKEN);
 
+
 app.get('/', (req, res) => {
   res.send('soy el server');
 });
@@ -48,6 +51,8 @@ app.get('/', (req, res) => {
 app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
+    console.log("📦 mp:", mp);
+    console.log("🧑‍🦱 ecommerce:", ecommerce);
 
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
@@ -69,6 +74,9 @@ app.post('/create_preference', async (req, res) => {
 
     const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
 
+    const preferenceId = randomUUID(); // ✅ GENERÁS TU ID ÚNICO
+    console.log("🔑 preferenceId generado:", preferenceId);
+
     const body = {
       items: mp.map(item => ({
         id: item.producto_id,
@@ -76,11 +84,12 @@ app.post('/create_preference', async (req, res) => {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price)
       })),
+      external_reference: preferenceId, // ✅ ENVIADO A MP
       metadata: {
-        // ❗️MercadoPago no lo manda al webhook, solo por si lo ves en dashboard
         carrito: carritoFormateado,
         user_id: ecommerce[0].user_id,
-        total
+        total,
+        preference_id: preferenceId // opcional pero útil
       },
       notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
@@ -93,19 +102,26 @@ app.post('/create_preference', async (req, res) => {
 
     const result = await preference.create({ body });
 
-    // ✅ Guardar carrito temporal en la base de datos
-    await supabase.from('carritos_temporales').insert([{
-      preference_id: result.id,
+    console.log("📬 Preferencia creada:", result);
+
+    // ✅ Guardar carrito temporal
+    const { error: insertError } = await supabase.from('carritos_temporales').insert([{
+      preference_id: preferenceId,
       user_id: ecommerce[0].user_id,
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
 
+    if (insertError) {
+      console.error("❌ Error al guardar carrito temporal:", insertError);
+      return res.status(500).json({ error: 'Error al guardar el carrito temporal' });
+    }
+
     res.json({ id: result.id });
 
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
+    console.error("❌ Error al crear la preferencia:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -139,23 +155,21 @@ app.post('/orden', async (req, res) => {
     );
 
     const pago = mpResponse.data;
+    console.log("💵 Pago recibido:", pago);
 
     if (pago.status !== 'approved') {
       console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
       return res.sendStatus(200);
     }
 
-    // 🟡 Obtener el preference_id de distintas posibles fuentes
-    const preferenceId = pago.metadata?.preference_id ||
-                         pago.additional_info?.preference_id ||
-                         pago.order?.id;
+    const preferenceId = pago.metadata?.preference_id || pago.external_reference;
+    console.log("🧩 preferenceId recibido:", preferenceId);
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
       return res.status(400).json({ error: 'Falta preference_id' });
     }
 
-    // ✅ Buscar carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
       .from('carritos_temporales')
       .select('*')
@@ -171,10 +185,9 @@ app.post('/orden', async (req, res) => {
     const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
 
-    console.log('💰 total:', total);
-    console.log('🛒 carrito:', carrito);
+    console.log('💰 Total del carrito:', total);
+    console.log('🛒 Detalle carrito:', carrito);
 
-    // Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -228,7 +241,6 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
-    // ✅ Limpieza
     await supabase.from('carritos_temporales')
       .delete()
       .eq('preference_id', preferenceId);
