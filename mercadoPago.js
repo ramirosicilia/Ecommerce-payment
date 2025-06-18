@@ -156,7 +156,10 @@ app.post('/orden', async (req, res) => {
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
       return res.status(400).json({ error: 'Falta preference_id' });
-    }
+    } 
+
+     console.log('🔎 Pago completoooooo:', JSON.stringify(pago, null, 2));
+
 
     // ✅ Buscar carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
