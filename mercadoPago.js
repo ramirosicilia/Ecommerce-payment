@@ -41,22 +41,16 @@ const preference = new Preference(client);
 console.log("token", process.env.MERCADO_PAGO_ACCESS_TOKEN);
 
 app.get('/', (req, res) => {
-  res.send('soy el server');
+  res.send('Soy el servidor funcionando');
 });
 
-// 🧾 Crear preferencia de pago
+// 🔁 CREAR PREFERENCIA
 app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
 
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
-    }
-
-    for (const item of mp) {
-      if (!item.id) {
-        return res.status(400).json({ error: 'Algún producto no tiene id.' });
-      }
     }
 
     const carritoFormateado = mp.map(item => ({
@@ -76,24 +70,31 @@ app.post('/create_preference', async (req, res) => {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price)
       })),
-      metadata: {
-        // ❗️MercadoPago no lo manda al webhook, solo por si lo ves en dashboard
-        carrito: carritoFormateado,
-        user_id: ecommerce[0].user_id,
-        total
-      },
-      notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
         pending: `${process.env.URL_FRONT}/productosUsuario.html`
       },
+      notification_url: `${process.env.URL_BACK}/orden`,
       auto_return: "approved"
     };
 
     const result = await preference.create({ body });
 
-    // ✅ Guardar carrito temporal en la base de datos
+    // 🔐 Guardamos el preference_id en metadata
+    await preference.update({
+      id: result.id,
+      body: {
+        metadata: {
+          carrito: carritoFormateado,
+          user_id: ecommerce[0].user_id,
+          total,
+          preference_id: result.id
+        }
+      }
+    });
+
+    // 📝 Guardar carrito temporal
     await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
       user_id: ecommerce[0].user_id,
@@ -102,60 +103,48 @@ app.post('/create_preference', async (req, res) => {
       fecha_creacion: new Date().toISOString()
     }]);
 
+    console.log('🆗 Preferencia creada con ID:', result.id);
     res.json({ id: result.id });
 
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
+    console.error("❌ Error al crear preferencia:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 📩 Webhook
+// 📩 WEBHOOK
 app.post('/orden', async (req, res) => {
   try {
+    console.log('📩 Webhook recibido:', JSON.stringify(req.body, null, 2));
+
     const { type, action, data } = req.body;
     const id = data?.id;
 
-    console.log('📩 Webhook recibido en /orden:', req.body);
-
-    if (!id || !type || !action) {
-      return res.status(400).json({ error: 'Faltan datos en el webhook.' });
-    }
-
-    if (type !== 'payment' || action !== 'payment.created') {
-      console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
+    if (!id || type !== 'payment' || action !== 'payment.created') {
+      console.warn('⚠️ Webhook ignorado por datos incorrectos.');
       return res.sendStatus(200);
     }
 
-    const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-
-    const mpResponse = await axios.get(
-      `https://api.mercadopago.com/v1/payments/${id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
+    const mpResponse = await axios.get(`https://api.mercadopago.com/v1/payments/${id}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.MERCADO_PAGO_ACCESS_TOKEN}`
       }
-    );
+    });
 
     const pago = mpResponse.data;
 
     if (pago.status !== 'approved') {
-      console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
+      console.log('⏳ Pago no aprobado, se ignora:', pago.status);
       return res.sendStatus(200);
     }
 
-    // 🟡 Obtener el preference_id de distintas posibles fuentes
-    const preferenceId = pago.metadata?.preference_id ||
-                         pago.additional_info?.preference_id ||
-                         pago.order?.id;
+    const preferenceId = pago.metadata?.preference_id;
 
     if (!preferenceId) {
-      console.error('❌ No se pudo obtener el preference_id desde el pago.');
-      return res.status(400).json({ error: 'Falta preference_id' });
+      console.error('❌ No se pudo obtener el preference_id desde metadata del pago.');
+      return res.status(400).json({ error: 'Falta preference_id en metadata.' });
     }
 
-    // ✅ Buscar carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
       .from('carritos_temporales')
       .select('*')
@@ -164,17 +153,11 @@ app.post('/orden', async (req, res) => {
 
     if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
-      return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
+      return res.status(500).json({ error: 'Carrito temporal no encontrado.' });
     }
 
-    const carrito = carritoTemp.carrito;
-    const user_id = carritoTemp.user_id;
-    const total = carritoTemp.total;
+    const { carrito, user_id, total } = carritoTemp;
 
-    console.log('💰 total:', total);
-    console.log('🛒 carrito:', carrito);
-
-    // Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -188,8 +171,8 @@ app.post('/orden', async (req, res) => {
       .single();
 
     if (errorPedido || !pedidoInsertado) {
-      console.error('❌ Error al insertar el pedido:', errorPedido);
-      return res.status(500).json({ error: 'No se pudo insertar el pedido' });
+      console.error('❌ Error al insertar pedido:', errorPedido);
+      return res.status(500).json({ error: 'No se pudo insertar el pedido.' });
     }
 
     const pedido_id = pedidoInsertado.pedido_id;
@@ -203,7 +186,7 @@ app.post('/orden', async (req, res) => {
         .match({ producto_id, color_id, talle_id });
 
       if (error || !variantes || variantes.length === 0) {
-        console.error('❌ Variante no encontrada para:', item);
+        console.warn('⚠️ Variante no encontrada para:', item);
         continue;
       }
 
@@ -211,7 +194,7 @@ app.post('/orden', async (req, res) => {
       const nuevoStock = variante.stock - cantidad;
 
       if (nuevoStock < 0) {
-        console.warn('⚠️ Stock insuficiente para producto', producto_id);
+        console.warn('⚠️ Stock insuficiente para producto:', producto_id);
         continue;
       }
 
@@ -220,16 +203,18 @@ app.post('/orden', async (req, res) => {
         .update({ stock: nuevoStock })
         .eq('variante_id', variante.variante_id);
 
-      await supabase.from('detalle_pedidos').insert([{
-        pedido_id,
-        variante_id: variante.variante_id,
-        cantidad,
-        precio_unitario: unit_price
-      }]);
+      await supabase
+        .from('detalle_pedidos')
+        .insert([{
+          pedido_id,
+          variante_id: variante.variante_id,
+          cantidad,
+          precio_unitario: unit_price
+        }]);
     }
 
-    // ✅ Limpieza
-    await supabase.from('carritos_temporales')
+    await supabase
+      .from('carritos_temporales')
       .delete()
       .eq('preference_id', preferenceId);
 
@@ -237,14 +222,14 @@ app.post('/orden', async (req, res) => {
     return res.sendStatus(200);
 
   } catch (error) {
-    console.error('❌ Error al procesar webhook /orden:');
+    console.error('❌ Error procesando /orden');
     console.error('Mensaje:', error.message);
     console.error('Stack:', error.stack);
-    return res.status(500).json({ error: 'Error interno', detalle: error.message });
+    return res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-// 🚀 Iniciar servidor
+// 🚀 SERVIDOR
 app.listen(port, () => {
-  console.log(`Estoy escuchando el puerto ${port}`);
+  console.log(`Servidor escuchando en puerto ${port}`);
 });
