@@ -49,6 +49,9 @@ app.post('/create_preference', async (req, res) => {
   try {
     const { mp, ecommerce } = req.body;
 
+    console.log('📦 mp:', mp);
+    console.log('👤 ecommerce:', ecommerce);
+
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
     }
@@ -68,6 +71,7 @@ app.post('/create_preference', async (req, res) => {
     }));
 
     const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
+    console.log('💲 Total calculado:', total);
 
     const body = {
       items: mp.map(item => ({
@@ -77,7 +81,6 @@ app.post('/create_preference', async (req, res) => {
         unit_price: Number(item.unit_price)
       })),
       metadata: {
-        // ❗️MercadoPago no lo manda al webhook, solo por si lo ves en dashboard
         carrito: carritoFormateado,
         user_id: ecommerce[0].user_id,
         total
@@ -91,9 +94,13 @@ app.post('/create_preference', async (req, res) => {
       auto_return: "approved"
     };
 
+    console.log('📨 Enviando body a MercadoPago:', JSON.stringify(body, null, 2));
+
     const result = await preference.create({ body });
 
-    // ✅ Guardar carrito temporal en la base de datos
+    console.log('✅ Preferencia creada:', result.id);
+
+    // ✅ Agregamos external_reference con el id real
     await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
       user_id: ecommerce[0].user_id,
@@ -102,10 +109,11 @@ app.post('/create_preference', async (req, res) => {
       fecha_creacion: new Date().toISOString()
     }]);
 
-    res.json({ id: result.id });
+    // Enviar también como external_reference para que llegue al webhook
+    res.json({ id: result.id, external_reference: result.id });
 
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
+    console.error("❌ Error al crear la preferencia:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -116,7 +124,7 @@ app.post('/orden', async (req, res) => {
     const { type, action, data } = req.body;
     const id = data?.id;
 
-    console.log('📩 Webhook recibido en /orden:', req.body);
+    console.log('📩 Webhook recibido en /orden:', JSON.stringify(req.body, null, 2));
 
     if (!id || !type || !action) {
       return res.status(400).json({ error: 'Faltan datos en el webhook.' });
@@ -139,16 +147,17 @@ app.post('/orden', async (req, res) => {
     );
 
     const pago = mpResponse.data;
+    console.log('💵 Datos del pago:', JSON.stringify(pago, null, 2));
 
     if (pago.status !== 'approved') {
       console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
       return res.sendStatus(200);
     }
 
-    // 🟡 Obtener el preference_id de distintas posibles fuentes
-    const preferenceId = pago.metadata?.preference_id ||
-                         pago.additional_info?.preference_id ||
-                         pago.order?.id;
+    // ✅ AHORA usamos external_reference directamente
+    const preferenceId = pago.external_reference;
+
+    console.log('🔎 preferenceId recibido en webhook:', preferenceId);
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
@@ -193,6 +202,7 @@ app.post('/orden', async (req, res) => {
     }
 
     const pedido_id = pedidoInsertado.pedido_id;
+    console.log('🧾 Pedido insertado con ID:', pedido_id);
 
     for (const item of carrito) {
       const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
@@ -226,6 +236,8 @@ app.post('/orden', async (req, res) => {
         cantidad,
         precio_unitario: unit_price
       }]);
+
+      console.log(`🧩 Producto registrado en detalle_pedidos: ${producto_id} (${cantidad} unidades)`);
     }
 
     // ✅ Limpieza
