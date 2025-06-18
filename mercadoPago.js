@@ -31,18 +31,14 @@ app.use(cors({
 
 app.use(express.json());
 
-
 const client = new MercadoPagoConfig({
- accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN, 
+  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN,
   options: { timeout: 40000 }
-}); 
+});
 
-const preference = new Preference(client); 
+const preference = new Preference(client);
 
- console.log("token",process.env.MERCADO_PAGO_ACCESS_TOKEN)  
-
- 
-
+console.log("token", process.env.MERCADO_PAGO_ACCESS_TOKEN);
 
 app.get('/', (req, res) => {
   res.send('soy el server');
@@ -61,37 +57,50 @@ app.post('/create_preference', async (req, res) => {
       if (!item.id) {
         return res.status(400).json({ error: 'Algún producto no tiene id.' });
       }
-     }
- 
-     const body = {
-       items: mp.map(item => ({
-         id: item.producto_id,
-         title: item.name,
-         quantity: Number(item.quantity),
-         unit_price: Number(item.unit_price)
-       })),
-      metadata: {
-     carrito: mp.map(item => ({
-       producto_id: item.producto_id,
-       color_id: item.color_id,
-       talle_id: item.talle_id,
-       cantidad: item.quantity,
-       unit_price: item.unit_price  // 🟢 AGREGALO AQUÍ
-     })),
-     user_id: ecommerce[0].user_id,
-     total:mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0)
+    }
 
-   },
-       notification_url: `${process.env.URL_FRONT}/orden`,
+    const carritoFormateado = mp.map(item => ({
+      producto_id: item.producto_id,
+      color_id: item.color_id,
+      talle_id: item.talle_id,
+      cantidad: item.quantity,
+      unit_price: item.unit_price
+    }));
+
+    const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
+
+    const body = {
+      items: mp.map(item => ({
+        id: item.producto_id,
+        title: item.name,
+        quantity: Number(item.quantity),
+        unit_price: Number(item.unit_price)
+      })),
+      metadata: {
+        // ❗️MercadoPago no lo manda al webhook, solo por si lo ves en dashboard
+        carrito: carritoFormateado,
+        user_id: ecommerce[0].user_id,
+        total
+      },
+      notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
-        pending: `${process.env.URL_FRONT}/productosUsuario.html`,
+        pending: `${process.env.URL_FRONT}/productosUsuario.html`
       },
       auto_return: "approved"
     };
 
     const result = await preference.create({ body });
+
+    // ✅ Guardar carrito temporal en la base de datos
+    await supabase.from('carritos_temporales').insert([{
+      preference_id: result.id,
+      user_id: ecommerce[0].user_id,
+      carrito: carritoFormateado,
+      total,
+      fecha_creacion: new Date().toISOString()
+    }]);
 
     res.json({ id: result.id });
 
@@ -101,6 +110,7 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
+// 📩 Webhook
 app.post('/orden', async (req, res) => {
   try {
     const { type, action, data } = req.body;
@@ -112,7 +122,6 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Faltan datos en el webhook.' });
     }
 
-    // ✅ Validar que sea un pago creado
     if (type !== 'payment' || action !== 'payment.created') {
       console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
@@ -120,7 +129,6 @@ app.post('/orden', async (req, res) => {
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
-    // ✅ Consultar el pago a la API para obtener datos completos
     const mpResponse = await axios.get(
       `https://api.mercadopago.com/v1/payments/${id}`,
       {
@@ -132,19 +140,41 @@ app.post('/orden', async (req, res) => {
 
     const pago = mpResponse.data;
 
-    // ✅ Procesar solo si el pago fue aprobado
     if (pago.status !== 'approved') {
       console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
       return res.sendStatus(200);
     }
 
-    const carrito = pago.metadata.carrito;
-    const user_id = pago.metadata.user_id;
-    const total = pago.metadata.total; 
-    console.log(total,'total')
-    console.log('carrito',carrito)
+    // 🟡 Obtener el preference_id de distintas posibles fuentes
+    const preferenceId = pago.metadata?.preference_id ||
+                         pago.additional_info?.preference_id ||
+                         pago.order?.id;
 
-    // Insertar pedido y obtener UUID generado automáticamente
+    if (!preferenceId) {
+      console.error('❌ No se pudo obtener el preference_id desde el pago.');
+      return res.status(400).json({ error: 'Falta preference_id' });
+    }
+
+    // ✅ Buscar carrito temporal
+    const { data: carritoTemp, error: errorTemp } = await supabase
+      .from('carritos_temporales')
+      .select('*')
+      .eq('preference_id', preferenceId)
+      .single();
+
+    if (errorTemp || !carritoTemp) {
+      console.error('❌ No se encontró carrito temporal:', errorTemp);
+      return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
+    }
+
+    const carrito = carritoTemp.carrito;
+    const user_id = carritoTemp.user_id;
+    const total = carritoTemp.total;
+
+    console.log('💰 total:', total);
+    console.log('🛒 carrito:', carrito);
+
+    // Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -185,20 +215,23 @@ app.post('/orden', async (req, res) => {
         continue;
       }
 
-      // Actualizar stock
       await supabase
         .from('producto_variantes')
         .update({ stock: nuevoStock })
         .eq('variante_id', variante.variante_id);
 
-      // Insertar detalle del pedido
       await supabase.from('detalle_pedidos').insert([{
-        pedido_id: pedido_id,
+        pedido_id,
         variante_id: variante.variante_id,
-        cantidad: cantidad,
+        cantidad,
         precio_unitario: unit_price
       }]);
     }
+
+    // ✅ Limpieza
+    await supabase.from('carritos_temporales')
+      .delete()
+      .eq('preference_id', preferenceId);
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
