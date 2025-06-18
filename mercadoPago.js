@@ -73,6 +73,10 @@ app.post('/create_preference', async (req, res) => {
     const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
     console.log('💲 Total calculado:', total);
 
+    // 🔑 Generar external_reference
+    const externalReference = `${ecommerce[0].user_id}-${Date.now()}`;
+    console.log('🔗 external_reference generado:', externalReference);
+
     const body = {
       items: mp.map(item => ({
         id: item.producto_id,
@@ -85,6 +89,7 @@ app.post('/create_preference', async (req, res) => {
         user_id: ecommerce[0].user_id,
         total
       },
+      external_reference: externalReference,
       notification_url: `${process.env.URL_FRONT}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
@@ -100,23 +105,31 @@ app.post('/create_preference', async (req, res) => {
 
     console.log('✅ Preferencia creada:', result.id);
 
-    // ✅ Agregamos external_reference con el id real
-    await supabase.from('carritos_temporales').insert([{
+    // 🧾 Guardar en carritos_temporales con external_reference
+    const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
+      external_reference: externalReference,
       user_id: ecommerce[0].user_id,
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
 
-    // Enviar también como external_reference para que llegue al webhook
-    res.json({ id: result.id, external_reference: result.id });
+    if (insertError) {
+      console.error("❌ Error al insertar carrito temporal:", insertError);
+    } else {
+      console.log("📦 Carrito temporal guardado correctamente");
+    }
+
+    // Devolver también el external_reference
+    res.json({ id: result.id, external_reference: externalReference });
 
   } catch (error) {
     console.error("❌ Error al crear la preferencia:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
