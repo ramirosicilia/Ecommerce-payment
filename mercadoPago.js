@@ -98,15 +98,21 @@ app.post('/create_preference', async (req, res) => {
     console.log(carritoFormateado,"carrito") 
     console.log(total,'total')
 
-    // ✅ Guardar carrito temporal en la base de datos
-    await supabase.from('carritos_temporales').insert([{
+        // ✅ Guardar carrito temporal en la base de datos
+        const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
       user_id: ecommerce[0].user_id,
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
- 
+    
+    if (insertError) {
+      console.error("❌ Error al insertar carrito temporal:", insertError);
+    } else {
+      console.log("✅ Carrito temporal guardado con preference_id:", result.id);
+    }
+
     res.json({ id: result.id });
 
   } catch (error) {
@@ -182,10 +188,10 @@ let preferenceId = pago.preference_id;
       .eq('preference_id', preferenceId)
       .single();
 
-    /*if (errorTemp || !carritoTemp) {
+    if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
-    }*/
+    }
 
     const carrito = carritoTemp.carrito;
     const user_id = carritoTemp.user_id;
