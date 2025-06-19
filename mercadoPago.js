@@ -93,6 +93,11 @@ app.post('/create_preference', async (req, res) => {
 
     const result = await preference.create({ body });
 
+    console.log(result.id, "el id") 
+    console.log(ecommerce[0].user_id,'ecommerce') 
+    console.log(carritoFormateado,"carrito") 
+    console.log(total,'total')
+
     // ✅ Guardar carrito temporal en la base de datos
     await supabase.from('carritos_temporales').insert([{
       preference_id: result.id,
@@ -101,7 +106,7 @@ app.post('/create_preference', async (req, res) => {
       total,
       fecha_creacion: new Date().toISOString()
     }]);
-
+ 
     res.json({ id: result.id });
 
   } catch (error) {
