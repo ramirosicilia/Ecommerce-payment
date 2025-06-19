@@ -167,7 +167,9 @@ app.post('/orden', async (req, res) => {
       }
     );
 
-    const pago = mpResponse.data;
+    const pago = mpResponse.data; 
+
+    console.log('aca esta el pago ',pago)
 
     if (pago.status !== 'approved') {
       console.log(`🔁 Pago ${id} con estado ${pago.status}, no se procesa`);
