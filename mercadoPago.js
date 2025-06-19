@@ -60,7 +60,9 @@ app.post('/create_preference', async (req, res) => {
     }
 
     // ✅ Obtener user_id del primer item
-    const userId = mp[0]?.user_id;
+    const userId = mp[0]?.user_id; 
+
+    console.log('USER-ID',userId)
 
     if (!userId) {
       return res.status(400).json({ error: 'user_id no proporcionado' });
@@ -84,10 +86,12 @@ app.post('/create_preference', async (req, res) => {
         id: item.producto_id,
         title: item.name,
         quantity: Number(item.quantity),
-        unit_price: Number(item.unit_price)
+        unit_price: Number(item.unit_price),
+        external_reference:userId,  // <<== Aquí agregas el external_reference
       })),
-      external_reference:userId,  // <<== Aquí agregas el external_reference
+    
       metadata: {
+        external_reference:userId,  // <<== Aquí agregas el external_reference
         carrito: carritoFormateado,
         user_id: userId,
         total
