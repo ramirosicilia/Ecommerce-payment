@@ -73,7 +73,8 @@ app.post('/create_preference', async (req, res) => {
       color_id: item.color_id,
       talle_id: item.talle_id,
       cantidad: item.quantity,
-      unit_price: item.unit_price
+      unit_price: item.unit_price,
+       currency_id: "ARS",
     }));
 
     const total = mp.reduce(
@@ -82,9 +83,8 @@ app.post('/create_preference', async (req, res) => {
     );
 
     const preferenceBody = {
-  
+      external_reference: userId, //
       items: mp.map(item => ({
-        external_reference: userId, //
         id: item.producto_id,
         title: item.name,
         quantity: Number(item.quantity),
@@ -108,7 +108,9 @@ app.post('/create_preference', async (req, res) => {
 
     const result = await preference.create({ body: preferenceBody });
 
-    const preferenceId = result.id;
+    const preferenceId = result.id; 
+    console.log('📤 Enviando a Mercado Pago:', JSON.stringify(preferenceBody, null, 2));
+
 
     console.log("🟢 preferenceId:", preferenceId);
     console.log("🟢 user_id:", userId);
@@ -120,7 +122,6 @@ app.post('/create_preference', async (req, res) => {
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
-      user_id: userId,
        external_reference: userId, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
       total,
