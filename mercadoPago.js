@@ -174,32 +174,28 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // 🟡 Obtener el preference_id de distintas posibles fuentes
-let preferenceId = pago.preference_id;
+    // 🔎 Obtener preference_id desde pago o desde la orden
+    let preferenceId = pago.preference_id;
 
-      if (!preferenceId && pago.order?.id) {
-        // 🔄 Buscar la orden para obtener el preference_id
-        const orderId = pago.order.id;
-        const ordenResponse = await axios.get(
-          `https://api.mercadopago.com/merchant_orders/${orderId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`
-            }
+    if (!preferenceId && pago.order?.id) {
+      const ordenResponse = await axios.get(
+        `https://api.mercadopago.com/merchant_orders/${pago.order.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`
           }
-        );
-      
-        const orden = ordenResponse.data;
-        preferenceId = orden.preference_id;
-      }
+        }
+      );
 
+      preferenceId = ordenResponse.data?.preference_id;
+    }
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
       return res.status(400).json({ error: 'Falta preference_id' });
     }
 
-    // ✅ Buscar carrito temporal
+    // 🧾 Buscar el carrito temporal
     const { data: carritoTemp, error: errorTemp } = await supabase
       .from('carritos_temporales')
       .select('*')
@@ -218,7 +214,7 @@ let preferenceId = pago.preference_id;
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
 
-    // Insertar pedido
+    // 📝 Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -238,6 +234,7 @@ let preferenceId = pago.preference_id;
 
     const pedido_id = pedidoInsertado.pedido_id;
 
+    // 🛠 Insertar detalles y actualizar stock
     for (const item of carrito) {
       const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
 
@@ -272,8 +269,9 @@ let preferenceId = pago.preference_id;
       }]);
     }
 
-    // ✅ Limpieza
-    await supabase.from('carritos_temporales')
+    // 🧹 Limpiar carrito temporal
+    await supabase
+      .from('carritos_temporales')
       .delete()
       .eq('preference_id', preferenceId);
 
@@ -287,6 +285,7 @@ let preferenceId = pago.preference_id;
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
+
 
 // 🚀 Iniciar servidor
 app.listen(port, () => {
