@@ -82,8 +82,9 @@ app.post('/create_preference', async (req, res) => {
     );
 
     const preferenceBody = {
-        external_reference: userId, // ✅ Esto es lo que falta
+  
       items: mp.map(item => ({
+          external_reference: userId, //
         id: item.producto_id,
         title: item.name,
         quantity: Number(item.quantity),
@@ -124,6 +125,7 @@ app.post('/create_preference', async (req, res) => {
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
       user_id: userId,
+       external_reference: userId, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
