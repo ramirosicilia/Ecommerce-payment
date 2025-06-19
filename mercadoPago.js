@@ -92,7 +92,6 @@ app.post('/create_preference', async (req, res) => {
       })),
     
       metadata: {
-        external_reference:userId,  // <<== Aquí agregas el external_reference
         carrito: carritoFormateado,
         user_id: userId,
         total
