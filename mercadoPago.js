@@ -182,10 +182,10 @@ let preferenceId = pago.preference_id;
       .eq('preference_id', preferenceId)
       .single();
 
-    if (errorTemp || !carritoTemp) {
+    /*if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
-    }
+    }*/
 
     const carrito = carritoTemp.carrito;
     const user_id = carritoTemp.user_id;
