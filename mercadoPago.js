@@ -67,9 +67,12 @@ app.post('/create_preference', async (req, res) => {
       unit_price: item.unit_price
     }));
 
-    const total = mp.reduce((acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)), 0);
+    const total = mp.reduce(
+      (acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)),
+      0
+    );
 
-    const body = {
+    const preferenceBody = {
       items: mp.map(item => ({
         id: item.producto_id,
         title: item.name,
@@ -77,7 +80,6 @@ app.post('/create_preference', async (req, res) => {
         unit_price: Number(item.unit_price)
       })),
       metadata: {
-        // ❗️MercadoPago no lo manda al webhook, solo por si lo ves en dashboard
         carrito: carritoFormateado,
         user_id: ecommerce[0].user_id,
         total
@@ -91,35 +93,46 @@ app.post('/create_preference', async (req, res) => {
       auto_return: "approved"
     };
 
-    const result = await preference.create({ body });
+    const result = await preference.create({ body: preferenceBody });
 
-    console.log(result.id, "el id") 
-    console.log(ecommerce[0].user_id,'ecommerce') 
-    console.log(carritoFormateado,"carrito") 
-    console.log(total,'total')
+    const preferenceId = result.id;
+    const userId = ecommerce[0].user_id;
 
-        // ✅ Guardar carrito temporal en la base de datos
-        const { error: insertError } = await supabase.from('carritos_temporales').insert([{
-      preference_id: result.id,
-      user_id: ecommerce[0].user_id,
+    console.log("🟢 preferenceId:", preferenceId);
+    console.log("🟢 user_id:", userId);
+    console.log("🟢 carritoFormateado:", carritoFormateado);
+    console.log("🟢 total:", total);
+
+    // ✅ Validar que userId es UUID (opcional, pero útil para evitar errores)
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) {
+      console.error("❌ user_id no es un UUID válido:", userId);
+      return res.status(400).json({ error: 'user_id inválido' });
+    }
+
+    // ✅ Guardar carrito temporal en Supabase
+    const { error: insertError } = await supabase.from('carritos_temporales').insert([{
+      preference_id: preferenceId,
+      user_id: userId,
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
-    
+
     if (insertError) {
       console.error("❌ Error al insertar carrito temporal:", insertError);
-    } else {
-      console.log("✅ Carrito temporal guardado con preference_id:", result.id);
+      return res.status(500).json({ error: 'Error al guardar carrito temporal', detalle: insertError.message });
     }
 
-    res.json({ id: result.id });
+    console.log("✅ Carrito temporal guardado correctamente con preference_id:", preferenceId);
+    res.json({ id: preferenceId });
 
   } catch (error) {
-    console.error("Error al crear la preferencia:", error);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Error inesperado al crear la preferencia:", error.message);
+    return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
+
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
