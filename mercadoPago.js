@@ -151,9 +151,7 @@ app.post('/orden', async (req, res) => {
     }
 
     // 🟡 Obtener el preference_id de distintas posibles fuentes
-    const preferenceId = pago.metadata?.preference_id ||
-                         pago.additional_info?.preference_id ||
-                         pago.order?.id;
+   const preferenceId = pago.preference_id;
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
