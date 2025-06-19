@@ -84,7 +84,7 @@ app.post('/create_preference', async (req, res) => {
     const preferenceBody = {
   
       items: mp.map(item => ({
-          external_reference: userId, //
+        external_reference: userId, //
         id: item.producto_id,
         title: item.name,
         quantity: Number(item.quantity),
@@ -116,11 +116,7 @@ app.post('/create_preference', async (req, res) => {
     console.log("🟢 total:", total);
 
     // Validar UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(userId)) {
-      console.error("❌ user_id no es un UUID válido:", userId);
-      return res.status(400).json({ error: 'user_id inválido' });
-    }
+   
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
