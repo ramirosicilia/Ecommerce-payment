@@ -106,7 +106,9 @@ app.post('/create_preference', async (req, res) => {
       auto_return: "approved"
     };
 
-    const result = await preference.create({ body: preferenceBody });
+    const result = await preference.create({ body: preferenceBody }); 
+    console.log("📦 Resultado completo de preference.create:", JSON.stringify(result, null, 2));
+
 
     const preferenceId = result.id; 
     console.log('📤 Enviando a Mercado Pago:', JSON.stringify(preferenceBody, null, 2));
