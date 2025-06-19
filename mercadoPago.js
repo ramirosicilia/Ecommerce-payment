@@ -248,7 +248,13 @@ app.post('/orden', async (req, res) => {
     const pedido_id = pedidoInsertado.pedido_id;
 
     for (const item of carrito) {
-      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+      const { producto_id, color_id, talle_id, cantidad, unit_price } = item; 
+      console.log(producto_id,"producto_id")
+      console.log(color_id,"color_id") 
+      console.log(talle_id,"talle_id")
+      console.log(cantidad,"cantidad") 
+      console.log(unit_price,"precio")
+
 
       const { data: variantes, error } = await supabase
         .from('producto_variantes')
