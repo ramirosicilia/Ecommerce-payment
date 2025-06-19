@@ -225,11 +225,13 @@ app.post('/orden', async (req, res) => {
 
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
+    console.log("usuariooo",user_id)
+    console.log("external referenceeee", externalReference)
 
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
-        usuario_id: user_id,
+        usuario_id:externalReference,
         total,
         estado: 'pagado',
         fecha_creacion: new Date().toISOString(),
