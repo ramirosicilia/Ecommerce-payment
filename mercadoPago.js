@@ -47,7 +47,7 @@ app.get('/', (req, res) => {
 // 🧾 Crear preferencia de pago
 app.post('/create_preference', async (req, res) => {
   try {
-    const { mp, ecommerce } = req.body;
+    const { mp } = req.body;
 
     if (!Array.isArray(mp) || mp.length === 0) {
       return res.status(400).json({ error: 'No hay productos en la compra.' });
@@ -57,6 +57,13 @@ app.post('/create_preference', async (req, res) => {
       if (!item.id) {
         return res.status(400).json({ error: 'Algún producto no tiene id.' });
       }
+    }
+
+    // ✅ Obtener user_id del primer item
+    const userId = mp[0]?.user_id;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'user_id no proporcionado' });
     }
 
     const carritoFormateado = mp.map(item => ({
@@ -81,7 +88,7 @@ app.post('/create_preference', async (req, res) => {
       })),
       metadata: {
         carrito: carritoFormateado,
-        user_id: ecommerce[0].user_id,
+        user_id: userId,
         total
       },
       notification_url: `${process.env.URL_FRONT}/orden`,
@@ -96,21 +103,19 @@ app.post('/create_preference', async (req, res) => {
     const result = await preference.create({ body: preferenceBody });
 
     const preferenceId = result.id;
-    const userId = ecommerce[0].user_id;
 
     console.log("🟢 preferenceId:", preferenceId);
     console.log("🟢 user_id:", userId);
     console.log("🟢 carritoFormateado:", carritoFormateado);
     console.log("🟢 total:", total);
 
-    // ✅ Validar que userId es UUID (opcional, pero útil para evitar errores)
+    // Validar UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
       console.error("❌ user_id no es un UUID válido:", userId);
       return res.status(400).json({ error: 'user_id inválido' });
     }
 
-    // ✅ Guardar carrito temporal en Supabase
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
       user_id: userId,
