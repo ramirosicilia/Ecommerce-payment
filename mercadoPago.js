@@ -151,7 +151,24 @@ app.post('/orden', async (req, res) => {
     }
 
     // 🟡 Obtener el preference_id de distintas posibles fuentes
-   const preferenceId = pago.preference_id;
+let preferenceId = pago.preference_id;
+
+      if (!preferenceId && pago.order?.id) {
+        // 🔄 Buscar la orden para obtener el preference_id
+        const orderId = pago.order.id;
+        const ordenResponse = await axios.get(
+          `https://api.mercadopago.com/merchant_orders/${orderId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`
+            }
+          }
+        );
+      
+        const orden = ordenResponse.data;
+        preferenceId = orden.preference_id;
+      }
+
 
     if (!preferenceId) {
       console.error('❌ No se pudo obtener el preference_id desde el pago.');
