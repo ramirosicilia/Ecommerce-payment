@@ -155,7 +155,9 @@ app.post('/orden', async (req, res) => {
     if (type !== 'payment' || action !== 'payment.created') {
       console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
-    }
+    }  
+
+    console.log("el iddd",id)
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
