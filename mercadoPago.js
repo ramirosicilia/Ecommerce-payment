@@ -86,7 +86,7 @@ app.post('/create_preference', async (req, res) => {
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price)
       })),
-      external_reference: userId,  // <<== Aquí agregas el external_reference
+      external_reference:userId,  // <<== Aquí agregas el external_reference
       metadata: {
         carrito: carritoFormateado,
         user_id: userId,
@@ -177,10 +177,11 @@ app.post('/orden', async (req, res) => {
       return res.sendStatus(200);
     }
 
-    // 🔎 Obtener preference_id desde pago o desde la orden
-    let preferenceId = pago.preference_id;
+    // 🔎 Obtener external_reference desde pago o desde la orden
+    let externalReference = pago.external_reference;
+    console.log('decime si lo devuelve',externalReference)
 
-    if (!preferenceId && pago.order?.id) {
+    if (!externalReference && pago.order?.id) {
       const ordenResponse = await axios.get(
         `https://api.mercadopago.com/merchant_orders/${pago.order.id}`,
         {
@@ -190,19 +191,19 @@ app.post('/orden', async (req, res) => {
         }
       );
 
-      preferenceId = ordenResponse.data?.preference_id;
+      externalReference = ordenResponse.data?.external_reference;
     }
 
-    if (!preferenceId) {
-      console.error('❌ No se pudo obtener el preference_id desde el pago.');
-      return res.status(400).json({ error: 'Falta preference_id' });
+    if (!externalReference) {
+      console.error('❌ No se pudo obtener el external_reference desde el pago.');
+      return res.status(400).json({ error: 'Falta external_reference' });
     }
 
-    // 🧾 Buscar el carrito temporal
+    // 🧾 Buscar el carrito temporal por external_reference (NO preference_id)
     const { data: carritoTemp, error: errorTemp } = await supabase
       .from('carritos_temporales')
       .select('*')
-      .eq('preference_id', preferenceId)
+      .eq('external_reference', externalReference)
       .single();
 
     if (errorTemp || !carritoTemp) {
@@ -210,6 +211,7 @@ app.post('/orden', async (req, res) => {
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
     }
 
+    // --- resto del código igual ---
     const carrito = carritoTemp.carrito;
     const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
@@ -217,7 +219,6 @@ app.post('/orden', async (req, res) => {
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
 
-    // 📝 Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -237,7 +238,6 @@ app.post('/orden', async (req, res) => {
 
     const pedido_id = pedidoInsertado.pedido_id;
 
-    // 🛠 Insertar detalles y actualizar stock
     for (const item of carrito) {
       const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
 
@@ -272,11 +272,10 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
-    // 🧹 Limpiar carrito temporal
     await supabase
       .from('carritos_temporales')
       .delete()
-      .eq('preference_id', preferenceId);
+      .eq('external_reference', externalReference);  // también cambio aquí
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
@@ -288,6 +287,7 @@ app.post('/orden', async (req, res) => {
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
+
 
 
 // 🚀 Iniciar servidor
