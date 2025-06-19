@@ -82,12 +82,13 @@ app.post('/create_preference', async (req, res) => {
     );
 
     const preferenceBody = {
+        external_reference: userId, // ✅ Esto es lo que falta
       items: mp.map(item => ({
         id: item.producto_id,
         title: item.name,
         quantity: Number(item.quantity),
-        unit_price: Number(item.unit_price),
-        external_reference:userId,  // <<== Aquí agregas el external_reference
+        unit_price: Number(item.unit_price)
+
       })),
     
       metadata: {
