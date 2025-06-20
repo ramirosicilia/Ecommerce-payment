@@ -147,6 +147,10 @@ app.post('/create_preference', async (req, res) => {
   }
 });
 
+app.get('/orden', (req, res) => {
+  res.status(405).send('Método no permitido. Este endpoint es solo para POST de MercadoPago.');
+});
+
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
