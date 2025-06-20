@@ -151,66 +151,64 @@ app.get('/orden', (req, res) => {
   res.status(405).send('Método no permitido. Este endpoint es solo para POST de MercadoPago.');
 });
 
-
-// 📩 Webhook
 app.post('/orden', async (req, res) => {
   try {
     console.log('📩 Webhook recibido en /orden:', req.body);
 
     const { type, action, data, topic, resource } = req.body;
-    let paymentId = null;
+    let paymentId = data?.id;
 
-    // Si viene con topic=merchant_order (otra variante del webhook)
+    // 🟡 Ignorar merchant_order si lo recibimos por topic
     if (topic === 'merchant_order') {
       const url = new URL(resource || '');
-      const parts = url.pathname.split('/');
-      const merchantOrderId = parts[parts.length - 1];
-      console.log('🧾 ID de orden de merchant_order:', merchantOrderId);
-      // Aquí decides si quieres procesar merchant_order o ignorar
+      const merchantOrderId = url.pathname.split('/').pop();
+      console.log('🧾 merchant_order ID recibido, ignorado:', merchantOrderId);
       return res.status(200).send('merchant_order ignorado');
     }
 
-    // Si es un payment con action de creación
-    if (type === 'payment' && action === 'payment.created') {
-      paymentId = data?.id;
+    // ✅ Validar datos mínimos
+    if (!type || !data?.id) {
+      console.warn('❌ Webhook inválido: falta type o data.id');
+      return res.status(400).json({ error: 'Webhook sin datos válidos' });
     }
 
-    if (!paymentId) {
-      console.warn('❌ Webhook ignorado o sin payment ID');
-      return res.status(400).json({ error: 'Falta payment ID o tipo/action no es payment.created' });
+    // 🔒 Solo continuar si el tipo es "payment"
+    if (type !== 'payment') {
+      console.warn('⚠️ Webhook ignorado por tipo:', type);
+      return res.status(200).send('Tipo no manejado');
     }
 
-    // Validación adicional por si falta info
-    if (!type || !action || !data) {
-      return res.status(400).json({ error: 'Faltan datos esenciales en el webhook.' });
-    }
-
-    // Acceso a token y llamada a MP
+    // 🌐 Llamada a la API de Mercado Pago para obtener info del pago
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
     const mpResponse = await axios.get(
       `https://api.mercadopago.com/v1/payments/${paymentId}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
+      {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }
     );
 
     const pago = mpResponse.data;
-    console.log('Datos del pago:', pago);
+    console.log('✅ Datos del pago obtenidos:', pago);
 
-    // Obtener external_reference desde pago o desde la orden
+    // 🔎 Buscar external_reference desde el pago o la orden
     let externalReference = pago.external_reference;
+
     if (!externalReference && pago.order?.id) {
       const ordenResponse = await axios.get(
         `https://api.mercadopago.com/merchant_orders/${pago.order.id}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        }
       );
       externalReference = ordenResponse.data?.external_reference;
     }
 
     if (!externalReference) {
-      console.error('❌ No se pudo obtener el external_reference desde el pago.');
+      console.error('❌ No se encontró external_reference');
       return res.status(400).json({ error: 'Falta external_reference' });
     }
 
-    // Buscar carrito temporal
+    // 🛒 Buscar carrito temporal en Supabase
     const { data: carritoTemp, error: errorTemp } = await supabase
       .from('carritos_temporales')
       .select('*')
@@ -219,7 +217,7 @@ app.post('/orden', async (req, res) => {
       .maybeSingle();
 
     if (errorTemp || !carritoTemp) {
-      console.error('❌ No se encontró carrito temporal:', errorTemp);
+      console.error('❌ Carrito temporal no encontrado:', errorTemp);
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
     }
 
@@ -227,12 +225,11 @@ app.post('/orden', async (req, res) => {
     const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
 
-    console.log('💰 total:', total);
-    console.log('🛒 carrito:', carrito);
-    console.log('👤 usuario:', user_id);
-    console.log('🔗 external_reference:', externalReference);
+    console.log('🛒 Carrito:', carrito);
+    console.log('👤 Usuario:', user_id);
+    console.log('💰 Total:', total);
 
-    // Insertar pedido
+    // 🧾 Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
@@ -246,17 +243,15 @@ app.post('/orden', async (req, res) => {
       .single();
 
     if (errorPedido || !pedidoInsertado) {
-      console.error('❌ Error al insertar el pedido:', errorPedido);
+      console.error('❌ Error al insertar pedido:', errorPedido);
       return res.status(500).json({ error: 'No se pudo insertar el pedido' });
     }
 
     const pedido_id = pedidoInsertado.pedido_id;
 
-    // Recorrer carrito y actualizar stock + detalle_pedidos
+    // 🔄 Detalles del pedido y actualización de stock
     for (const item of carrito) {
       const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
-
-      console.log('Procesando item:', { producto_id, color_id, talle_id, cantidad, unit_price });
 
       const { data: variantes, error } = await supabase
         .from('producto_variantes')
@@ -272,7 +267,7 @@ app.post('/orden', async (req, res) => {
       const nuevoStock = variante.stock - cantidad;
 
       if (nuevoStock < 0) {
-        console.warn('⚠️ Stock insuficiente para producto', producto_id);
+        console.warn('⚠️ Stock insuficiente para producto:', producto_id);
         continue;
       }
 
@@ -289,13 +284,13 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
-    // Borrar carrito temporal
+    // 🧹 Eliminar carrito temporal
     await supabase
       .from('carritos_temporales')
       .delete()
       .eq('external_reference', externalReference);
 
-    console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
+    console.log(`✅ Pedido ${pedido_id} procesado correctamente.`);
     return res.sendStatus(200);
 
   } catch (error) {
@@ -303,7 +298,6 @@ app.post('/orden', async (req, res) => {
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
-
 
 
 
