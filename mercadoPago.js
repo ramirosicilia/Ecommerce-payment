@@ -95,7 +95,7 @@ app.post('/create_preference', async (req, res) => {
         user_id: userId,
         total
       },
-      notification_url: `${process.env.URL_FRONT}/orden`,
+      notification_url: `${process.env.URL_PAYMENTS}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
