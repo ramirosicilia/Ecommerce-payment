@@ -149,7 +149,11 @@ app.post('/orden', async (req, res) => {
     const { type, action, data } = req.body;
     const id = data?.id;
 
+
+
     console.log('📩 Webhook recibido en /orden:', req.body);
+
+    console.log(type+" "+ data + " " +action+" "+"la info")
 
     if (!id || !type || !action) {
       return res.status(400).json({ error: 'Faltan datos en el webhook.' });
