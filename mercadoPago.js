@@ -95,7 +95,7 @@ app.post('/create_preference', async (req, res) => {
         user_id: userId,
         total
       },
-      notification_url: `${process.env.URL_PAYMENTS}/orden`,
+      notification_url:`${process.env.URL_PAYMENTS}/orden`,
       back_urls: {
         success: `${process.env.URL_FRONT}/compraRealizada.html`,
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
@@ -118,6 +118,11 @@ app.post('/create_preference', async (req, res) => {
     console.log("🟢 total:", total);
 
     // Validar UUID
+        await supabase
+      .from('carritos_temporales')
+      .delete()
+      .eq('external_reference', userId);
+
    
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
@@ -145,6 +150,7 @@ app.post('/create_preference', async (req, res) => {
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
+
   try {
     const { type, action, data } = req.body;
     const id = data?.id;
@@ -205,11 +211,12 @@ app.post('/orden', async (req, res) => {
     }
 
     // 🧾 Buscar el carrito temporal por external_reference (NO preference_id)
-    const { data: carritoTemp, error: errorTemp } = await supabase
-      .from('carritos_temporales')
-      .select('*')
-      .eq('external_reference', externalReference)
-      .single();
+         const { data: carritoTemp, error: errorTemp } = await supabase
+         .from('carritos_temporales')
+         .select('*')
+         .eq('external_reference', externalReference)
+         .limit(1)
+         .maybeSingle(); // ✅ más seguro que single()
 
     if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
