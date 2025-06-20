@@ -154,58 +154,54 @@ app.get('/orden', (req, res) => {
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
-
   try {
-    const { type, action, data } = req.body;
-    const id = data?.id;
-
-
-
     console.log('📩 Webhook recibido en /orden:', req.body);
 
-    console.log(type+" "+ data + " " +action+" "+"la info")
+    const { type, action, data, topic, resource } = req.body;
+    let paymentId = null;
 
-    if (!id || !type || !action) {
-      return res.status(400).json({ error: 'Faltan datos en el webhook.' });
+    // Si viene con topic=merchant_order (otra variante del webhook)
+    if (topic === 'merchant_order') {
+      const url = new URL(resource || '');
+      const parts = url.pathname.split('/');
+      const merchantOrderId = parts[parts.length - 1];
+      console.log('🧾 ID de orden de merchant_order:', merchantOrderId);
+      // Aquí decides si quieres procesar merchant_order o ignorar
+      return res.status(200).send('merchant_order ignorado');
     }
 
-    if (type !== 'payment' || action !== 'payment.created') {
-      console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
-      return res.sendStatus(200);
-    }  
+    // Si es un payment con action de creación
+    if (type === 'payment' && action === 'payment.created') {
+      paymentId = data?.id;
+    }
 
-    console.log("el iddd",id)
+    if (!paymentId) {
+      console.warn('❌ Webhook ignorado o sin payment ID');
+      return res.status(400).json({ error: 'Falta payment ID o tipo/action no es payment.created' });
+    }
 
+    // Validación adicional por si falta info
+    if (!type || !action || !data) {
+      return res.status(400).json({ error: 'Faltan datos esenciales en el webhook.' });
+    }
+
+    // Acceso a token y llamada a MP
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
-
     const mpResponse = await axios.get(
-      `https://api.mercadopago.com/v1/payments/${id}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      }
+      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
-    const pago = mpResponse.data; 
+    const pago = mpResponse.data;
+    console.log('Datos del pago:', pago);
 
-    console.log('aca esta el pago ',pago)
-
-   
-    // 🔎 Obtener external_reference desde pago o desde la orden
+    // Obtener external_reference desde pago o desde la orden
     let externalReference = pago.external_reference;
-    console.log('decime si lo devuelve',externalReference)
-
     if (!externalReference && pago.order?.id) {
       const ordenResponse = await axios.get(
         `https://api.mercadopago.com/merchant_orders/${pago.order.id}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`
-          }
-        }
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       );
-
       externalReference = ordenResponse.data?.external_reference;
     }
 
@@ -214,33 +210,33 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Falta external_reference' });
     }
 
-    // 🧾 Buscar el carrito temporal por external_reference (NO preference_id)
-         const { data: carritoTemp, error: errorTemp } = await supabase
-         .from('carritos_temporales')
-         .select('*')
-         .eq('external_reference', externalReference)
-         .limit(1)
-         .maybeSingle(); // ✅ más seguro que single()
+    // Buscar carrito temporal
+    const { data: carritoTemp, error: errorTemp } = await supabase
+      .from('carritos_temporales')
+      .select('*')
+      .eq('external_reference', externalReference)
+      .limit(1)
+      .maybeSingle();
 
     if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
     }
 
-    // --- resto del código igual ---
     const carrito = carritoTemp.carrito;
     const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
 
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
-    console.log("usuariooo",user_id)
-    console.log("external referenceeee", externalReference)
+    console.log('👤 usuario:', user_id);
+    console.log('🔗 external_reference:', externalReference);
 
+    // Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
-        usuario_id:externalReference,
+        usuario_id: externalReference,
         total,
         estado: 'pagado',
         fecha_creacion: new Date().toISOString(),
@@ -256,14 +252,11 @@ app.post('/orden', async (req, res) => {
 
     const pedido_id = pedidoInsertado.pedido_id;
 
+    // Recorrer carrito y actualizar stock + detalle_pedidos
     for (const item of carrito) {
-      const { producto_id, color_id, talle_id, cantidad, unit_price } = item; 
-      console.log(producto_id,"producto_id")
-      console.log(color_id,"color_id") 
-      console.log(talle_id,"talle_id")
-      console.log(cantidad,"cantidad") 
-      console.log(unit_price,"precio")
+      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
 
+      console.log('Procesando item:', { producto_id, color_id, talle_id, cantidad, unit_price });
 
       const { data: variantes, error } = await supabase
         .from('producto_variantes')
@@ -296,21 +289,21 @@ app.post('/orden', async (req, res) => {
       }]);
     }
 
+    // Borrar carrito temporal
     await supabase
       .from('carritos_temporales')
       .delete()
-      .eq('external_reference', externalReference);  // también cambio aquí
+      .eq('external_reference', externalReference);
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
 
   } catch (error) {
-    console.error('❌ Error al procesar webhook /orden:');
-    console.error('Mensaje:', error.message);
-    console.error('Stack:', error.stack);
+    console.error('❌ Error al procesar webhook /orden:', error);
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
+
 
 
 
