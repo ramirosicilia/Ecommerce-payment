@@ -154,49 +154,32 @@ app.get('/orden', (req, res) => {
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
+
   try {
+    const { type, action, data } = req.body;
+    const id = data?.id;
+
+
+
     console.log('📩 Webhook recibido en /orden:', req.body);
 
-    const { type, action, data, topic, resource } = req.body;
-    let paymentId = null;
+    console.log(type+" "+ data + " " +action+" "+"la info")
 
-    // 🔸 CASO 1: Formato clásico de webhook
-    if (type === 'payment' && action === 'payment.created') {
-      paymentId = data?.id;
+    if (!id || !type || !action) {
+      return res.status(400).json({ error: 'Faltan datos en el webhook.' });
     }
 
-    // 🔸 CASO 2: Webhook con topic/payment + resource
-    if (!paymentId && topic === 'payment' && resource) {
-      if (typeof resource === 'string') {
-        if (resource.includes('/')) {
-          const url = new URL(resource, 'https://api.mercadopago.com'); // base dummy
-          paymentId = url.pathname.split('/').pop();
-        } else {
-          paymentId = resource;
-        }
-      }
-    }
+    if (type !== 'payment' || action !== 'payment.created') {
+      console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
+      return res.sendStatus(200);
+    }  
 
-    // 🔸 CASO 3: merchant_order recibido => ignorar o manejar aparte
-    if (topic === 'merchant_order') {
-      const merchantOrderId = typeof resource === 'string' ? resource : null;
-      console.log('🧾 ID de orden de merchant_order:', merchantOrderId);
-      return res.status(200).send('merchant_order ignorado');
-    }
+    console.log("el iddd",id)
 
-    // ❌ Validación final
-    if (!paymentId) {
-      console.warn('❌ Webhook ignorado o sin payment ID');
-      return res.status(400).json({ error: 'Falta payment ID' });
-    }
-
-    console.log('🧾 ID de pago:', paymentId);
-
-    // 🔐 Traer el pago completo desde MP
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
     const mpResponse = await axios.get(
-      `https://api.mercadopago.com/v1/payments/${paymentId}`,
+      `https://api.mercadopago.com/v1/payments/${id}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`
@@ -204,11 +187,14 @@ app.post('/orden', async (req, res) => {
       }
     );
 
-    const pago = mpResponse.data;
-    console.log('✅ Datos del pago:', pago);
+    const pago = mpResponse.data; 
 
-    // 🔎 Obtener external_reference
+    console.log('aca esta el pago ',pago)
+
+   
+    // 🔎 Obtener external_reference desde pago o desde la orden
     let externalReference = pago.external_reference;
+    console.log('decime si lo devuelve',externalReference)
 
     if (!externalReference && pago.order?.id) {
       const ordenResponse = await axios.get(
@@ -219,40 +205,42 @@ app.post('/orden', async (req, res) => {
           }
         }
       );
+
       externalReference = ordenResponse.data?.external_reference;
     }
 
     if (!externalReference) {
-      console.error('❌ No se pudo obtener el external_reference');
+      console.error('❌ No se pudo obtener el external_reference desde el pago.');
       return res.status(400).json({ error: 'Falta external_reference' });
     }
 
-    // 🛒 Buscar carrito temporal
-    const { data: carritoTemp, error: errorTemp } = await supabase
-      .from('carritos_temporales')
-      .select('*')
-      .eq('external_reference', externalReference)
-      .limit(1)
-      .maybeSingle();
+    // 🧾 Buscar el carrito temporal por external_reference (NO preference_id)
+         const { data: carritoTemp, error: errorTemp } = await supabase
+         .from('carritos_temporales')
+         .select('*')
+         .eq('external_reference', externalReference)
+         .limit(1)
+         .maybeSingle(); // ✅ más seguro que single()
 
     if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
       return res.status(500).json({ error: 'No se pudo recuperar el carrito' });
     }
 
+    // --- resto del código igual ---
     const carrito = carritoTemp.carrito;
     const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
 
-    console.log('🛒 Carrito:', carrito);
-    console.log('👤 Usuario:', user_id);
-    console.log('💰 Total:', total);
+    console.log('💰 total:', total);
+    console.log('🛒 carrito:', carrito);
+    console.log("usuariooo",user_id)
+    console.log("external referenceeee", externalReference)
 
-    // 🧾 Insertar pedido
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
-        usuario_id: externalReference,
+        usuario_id:externalReference,
         total,
         estado: 'pagado',
         fecha_creacion: new Date().toISOString(),
@@ -262,14 +250,20 @@ app.post('/orden', async (req, res) => {
       .single();
 
     if (errorPedido || !pedidoInsertado) {
-      console.error('❌ Error al insertar pedido:', errorPedido);
+      console.error('❌ Error al insertar el pedido:', errorPedido);
       return res.status(500).json({ error: 'No se pudo insertar el pedido' });
     }
 
     const pedido_id = pedidoInsertado.pedido_id;
 
     for (const item of carrito) {
-      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+      const { producto_id, color_id, talle_id, cantidad, unit_price } = item; 
+      console.log(producto_id,"producto_id")
+      console.log(color_id,"color_id") 
+      console.log(talle_id,"talle_id")
+      console.log(cantidad,"cantidad") 
+      console.log(unit_price,"precio")
+
 
       const { data: variantes, error } = await supabase
         .from('producto_variantes')
@@ -285,7 +279,7 @@ app.post('/orden', async (req, res) => {
       const nuevoStock = variante.stock - cantidad;
 
       if (nuevoStock < 0) {
-        console.warn('⚠️ Stock insuficiente para producto:', producto_id);
+        console.warn('⚠️ Stock insuficiente para producto', producto_id);
         continue;
       }
 
@@ -305,7 +299,7 @@ app.post('/orden', async (req, res) => {
     await supabase
       .from('carritos_temporales')
       .delete()
-      .eq('external_reference', externalReference);
+      .eq('external_reference', externalReference);  // también cambio aquí
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
@@ -317,7 +311,6 @@ app.post('/orden', async (req, res) => {
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
 });
-
 
 
 
