@@ -338,7 +338,7 @@ app.post('/orden', async (req, res) => {
  const { error: errorDelete } = await supabase
   .from('carritos_temporales')
   .delete()
-  .eq('user_id', userId);
+
 
 if (errorDelete) {
   console.error('❌ Error al borrar carrito temporal:', errorDelete);
