@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
+import { v4 as uuidv4 } from 'uuid';
+
 
 
 const app = express();  
@@ -113,21 +115,16 @@ app.post('/create_preference', async (req, res) => {
 
 
     console.log("🟢 preferenceId:", preferenceId);
-    console.log("🟢 user_id:", userId);
+
     console.log("🟢 carritoFormateado:", carritoFormateado);
     console.log("🟢 total:", total);
 
-    // Validar UUID
-        await supabase
-      .from('carritos_temporales')
-      .delete()
-      .eq('external_reference', userId);
-
-   
+    
+   const referenciaUnica = uuidv4();
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
-       external_reference: userId, // ✅ AGREGA ESTO
+       external_reference: referenciaUnica, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
@@ -169,7 +166,7 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Faltan datos en el webhook.' });
     }
 
-    if (type !== 'payment' || action !== 'payment.created') {
+    if (type !=='payment' || action !=='payment.created') {
       console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
     }  
@@ -229,12 +226,10 @@ app.post('/orden', async (req, res) => {
 
     // --- resto del código igual ---
     const carrito = carritoTemp.carrito;
-    const user_id = carritoTemp.user_id;
     const total = carritoTemp.total;
 
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
-    console.log("usuariooo",user_id)
     console.log("external referenceeee", externalReference)
 
     const { data: pedidoInsertado, error: errorPedido } = await supabase
@@ -266,7 +261,7 @@ app.post('/orden', async (req, res) => {
 
 
       const { data: variantes, error } = await supabase
-        .from('producto_variantes')
+        .from('productos_variantes')
         .select('variante_id, stock')
         .match({ producto_id, color_id, talle_id });
 
