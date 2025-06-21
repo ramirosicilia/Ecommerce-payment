@@ -334,17 +334,23 @@ app.post('/orden', async (req, res) => {
     }]);
   }
  
-  console.log(externalReference)
- const { error: errorDelete } = await supabase
-  .from('carritos_temporales')
-  .delete()
-
-
-if (errorDelete) {
-  console.error('❌ Error al borrar carrito temporal:', errorDelete);
-} else {
-  console.log('✅ Carrito temporal borrado correctamente.');
-}
+      console.log(externalReference)
+     const { data: carritos, error: errorConsulta } = await supabase
+      .from('carritos_temporales')
+      .select('*');
+    
+    console.log('🧾 Carritos a borrar:', carritos?.length);
+    
+    const { error: errorDelete } = await supabase
+      .from('carritos_temporales')
+      .delete()
+      .not('external_reference', 'is', null);
+    
+    if (errorDelete) {
+      console.error('❌ Error al borrar carritos:', errorDelete);
+    } else {
+      console.log('✅ Carritos temporales eliminados.');
+    }
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
