@@ -122,11 +122,10 @@ app.post('/create_preference', async (req, res) => {
     console.log("🟢 carritoFormateado:", carritoFormateado);
     console.log("🟢 total:", total);
 
-    // Validar UUID
-        await supabase
-      .from('carritos_temporales')
-      .delete()
-      .eq('external_reference', userId);
+    // Vawait supabase
+   await supabase.from('carritos_temporales')
+  .delete()
+  .eq('external_reference', externalReference);  // ✅ lo correcto
 
        let user_id=userId
 
@@ -290,7 +289,13 @@ app.post('/orden', async (req, res) => {
   }
 
     // 📦 Unir todas las variantes del producto
-    const todasLasVariantes = productosConVariantes.productos_variantes;
+    const todasLasVariantes = productosConVariantes.productos_variantes; 
+
+      if (!Array.isArray(todasLasVariantes)) {
+    console.error("⚠️ productos_variantes no es un array:", todasLasVariantes);
+    continue;
+  }
+
   
     // 🧠 Buscar variante correcta por color_id y talle_id
     const variante = todasLasVariantes.find(
