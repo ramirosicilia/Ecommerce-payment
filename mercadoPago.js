@@ -128,13 +128,13 @@ app.post('/create_preference', async (req, res) => {
       .delete()
       .eq('external_reference', userId);
 
-   
+       let user_id=userId
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
        external_reference: externalReference, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
-      userId,
+       user_id,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
