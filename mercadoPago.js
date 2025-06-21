@@ -169,7 +169,10 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Faltan datos en el webhook.' });
     }
 
-  
+    if (type !== 'payment' || action !== 'payment.created') {
+      console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
+      return res.sendStatus(200);
+    }  
 
     console.log("el iddd",id)
 
