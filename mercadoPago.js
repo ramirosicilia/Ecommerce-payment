@@ -255,44 +255,65 @@ app.post('/orden', async (req, res) => {
     const pedido_id = pedidoInsertado.pedido_id;
 
     for (const item of carrito) {
-      const { producto_id, color_id, talle_id, cantidad, unit_price } = item; 
-      console.log(producto_id,"producto_id")
-      console.log(color_id,"color_id") 
-      console.log(talle_id,"talle_id")
-      console.log(cantidad,"cantidad") 
-      console.log(unit_price,"precio")
+  const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+  console.log(producto_id, "producto_id");
+  console.log(color_id, "color_id");
+  console.log(talle_id, "talle_id");
+  console.log(cantidad, "cantidad");
+  console.log(unit_price, "precio");
 
+  // 🔍 Obtener producto con todas sus variantes
+  const { data: productosConVariantes, error: errorProducto } = await supabase
+    .from('productos')
+    .select('producto_id, productos_variantes (variante_id, stock, color_id, talle_id)')
+    .eq('producto_id', producto_id)
+    .maybeSingle();
 
-      const { data: variantes, error } = await supabase
-        .from('productos_variantes')
-        .select('variante_id, stock')
-        .match({ producto_id, color_id, talle_id });
+  if (errorProducto || !productosConVariantes) {
+    console.error('❌ Error al obtener producto con variantes:', errorProducto);
+    continue;
+  }
 
-      if (error || !variantes || variantes.length === 0) {
-        console.error('❌ Variante no encontrada para:', item);
-        continue;
-      }
-
-      const variante = variantes[0];
-      const nuevoStock = variante.stock - cantidad;
-
-      if (nuevoStock < 0) {
-        console.warn('⚠️ Stock insuficiente para producto', producto_id);
-        continue;
-      }
-
-      await supabase
-        .from('producto_variantes')
-        .update({ stock: nuevoStock })
-        .eq('variante_id', variante.variante_id);
-
-      await supabase.from('detalle_pedidos').insert([{
-        pedido_id,
-        variante_id: variante.variante_id,
-        cantidad,
-        precio_unitario: unit_price
-      }]);
+    // 📦 Unir todas las variantes del producto
+    const todasLasVariantes = productosConVariantes.productos_variantes;
+  
+    // 🧠 Buscar variante correcta por color_id y talle_id
+    const variante = todasLasVariantes.find(
+      v => v.color_id === color_id && v.talle_id === talle_id
+    );
+  
+    if (!variante) {
+      console.warn('⚠️ No se encontró variante para:', item);
+      continue;
     }
+  
+    const nuevoStock = variante.stock - cantidad;
+  
+    if (nuevoStock < 0) {
+      console.warn('⚠️ Stock insuficiente para producto', producto_id);
+      continue;
+    }
+  
+    // 📉 Actualizar stock
+    const { error: errorUpdate } = await supabase
+      .from('productos_variantes')
+      .update({ stock: nuevoStock })
+      .eq('variante_id', variante.variante_id);
+  
+    if (errorUpdate) {
+      console.error('❌ Error al actualizar stock:', errorUpdate);
+      continue;
+    }
+  
+    // 🧾 Insertar en detalle_pedidos
+    await supabase.from('detalle_pedidos').insert([{
+      pedido_id,
+      variante_id: variante.variante_id,
+      cantidad,
+      precio_unitario: unit_price
+    }]);
+  }
+
 
     await supabase
       .from('carritos_temporales')
