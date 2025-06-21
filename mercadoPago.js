@@ -333,12 +333,18 @@ app.post('/orden', async (req, res) => {
       precio_unitario: unit_price
     }]);
   }
+ 
+  console.log(externalReference)
+ const { error: errorDelete } = await supabase
+  .from('carritos_temporales')
+  .delete()
+  .eq('user_id', userId);
 
-
-    await supabase
-      .from('carritos_temporales')
-      .delete()
-      .eq('external_reference', externalReference);  // también cambio aquí
+if (errorDelete) {
+  console.error('❌ Error al borrar carrito temporal:', errorDelete);
+} else {
+  console.log('✅ Carrito temporal borrado correctamente.');
+}
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
