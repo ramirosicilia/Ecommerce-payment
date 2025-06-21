@@ -233,21 +233,41 @@ app.post('/orden', async (req, res) => {
 
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
-    console.log("external referenceeee", externalReference)
+    console.log("external referenceeee", externalReference) 
 
-  const { data: pedidoExistente } = await supabase
-  .from('pedidos')
-  .select('pedido_id')
-  .eq('usuario_id', externalReference)
-  .maybeSingle();
+    
 
-if (pedidoExistente) {
-  console.log('✅ Pedido ya procesado previamente.');
-  return res.sendStatus(200);
-}
+    // Verificamos si ya existe un pedido con ese externalReference
+      const { data: pedidoExistente, error: errorExistente } = await supabase
+        .from('pedidos')
+        .select('pedido_id')
+        .eq('usuario_id', externalReference)
+        .maybeSingle();
+
+      if (pedidoExistente) {
+        console.log('📦 Pedido ya existe con ese externalReference:', pedidoExistente);
+        return res.status(200).json({ mensaje: 'El pedido ya fue registrado', pedido_id: pedidoExistente.pedido_id });
+      }
 
 
-    const pedido_id = pedidoExistente.pedido_id;
+    const { data: pedidoInsertado, error: errorPedido } = await supabase
+      .from('pedidos')
+      .insert([{
+        usuario_id:externalReference,
+        total,
+        estado: 'pagado',
+        fecha_creacion: new Date().toISOString(),
+        fecha_actualizacion: new Date().toISOString()
+      }])
+      .select('pedido_id')
+      .single();
+
+    if (errorPedido || !pedidoInsertado ) {
+      console.error('❌ Error al insertar el pedido:', errorPedido);
+      return res.status(500).json({ error: 'No se pudo insertar el pedido' });
+    }
+
+    const pedido_id = pedidoInsertado.pedido_id;
 
     for (const item of carrito) {
   const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
