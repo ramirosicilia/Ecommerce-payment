@@ -237,7 +237,18 @@ app.post('/orden', async (req, res) => {
 
     
 
-    
+    // Verificamos si ya existe un pedido con ese externalReference
+      const { data: pedidoExistente, error: errorExistente } = await supabase
+        .from('pedidos')
+        .select('pedido_id')
+         .eq('preference_id', carritoTemp.preference_id)  // ahora se usa preference_id
+         .maybeSingle(); 
+         
+      if (pedidoExistente) {
+        console.log('📦 Pedido ya existe con ese externalReference:', pedidoExistente);
+        return res.status(200).json({ mensaje: 'El pedido ya fue registrado', pedido_id: pedidoExistente.pedido_id });
+      }
+
 
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
