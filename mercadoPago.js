@@ -235,30 +235,7 @@ app.post('/orden', async (req, res) => {
     console.log('🛒 carrito:', carrito);
     console.log("external referenceeee", externalReference) 
 
-    // Buscar pedido anterior (si existe)
-const { data: pedidoExistente, error: errorExistente } = await supabase
-  .from('pedidos')
-  .select('pedido_id')
-  .eq('usuario_id', externalReference)
-  .maybeSingle();
-
-if (pedidoExistente) {
-  const pedido_id_antiguo = pedidoExistente.pedido_id;
-
-  console.log('🗑 Borrando pedido anterior:', pedido_id_antiguo);
-
-  // Borrar detalles del pedido
-  await supabase
-    .from('detalle_pedidos')
-    .delete()
-    .eq('pedido_id', pedido_id_antiguo);
-
-  // Borrar pedido
-  await supabase
-    .from('pedidos')
-    .delete()
-    .eq('pedido_id', pedido_id_antiguo);
-}
+    
 
     
 
