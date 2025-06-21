@@ -279,7 +279,7 @@ app.post('/orden', async (req, res) => {
   
     // 🧠 Buscar variante correcta por color_id y talle_id
     const variante = todasLasVariantes.find(
-      v => v.color_id === color_id && v.talle_id === talle_id
+      v => v.color_id.toString().trim() === color_id.toString().trim()  && v.talle_id.toString().trim()  === talle_id.toString().trim() 
     );
   
     if (!variante) {
