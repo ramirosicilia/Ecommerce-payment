@@ -134,6 +134,7 @@ app.post('/create_preference', async (req, res) => {
       preference_id: preferenceId,
        external_reference: externalReference, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
+      userId,
       total,
       fecha_creacion: new Date().toISOString()
     }]);
@@ -235,6 +236,7 @@ app.post('/orden', async (req, res) => {
     // --- resto del código igual ---
     const carrito = carritoTemp.carrito;
     const total = carritoTemp.total;
+    const userId = carritoTemp.user_id; // ✅ ahora sí tenemos el usuario correcto
 
     console.log('💰 total:', total);
     console.log('🛒 carrito:', carrito);
@@ -250,7 +252,7 @@ app.post('/orden', async (req, res) => {
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
-        usuario_id:externalReference,
+        usuario_id:userId,
         total,
         estado: 'pagado',
         preference_id:carritoTemp.preference_id,
