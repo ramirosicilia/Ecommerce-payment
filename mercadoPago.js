@@ -122,28 +122,7 @@ app.post('/create_preference', async (req, res) => {
     console.log("🟢 carritoFormateado:", carritoFormateado);
     console.log("🟢 total:", total);
 
-    // Vawait supabase
-   await supabase.from('carritos_temporales')
-  .delete()
-  .eq('external_reference', externalReference);  // ✅ lo correcto
-
-       let user_id=userId
-
-    const { error: insertError } = await supabase.from('carritos_temporales').insert([{
-      preference_id: preferenceId,
-       external_reference: externalReference, // ✅ AGREGA ESTO
-      carrito: carritoFormateado,
-       user_id,
-      total,
-      fecha_creacion: new Date().toISOString()
-    }]);
-
-    if (insertError) {
-      console.error("❌ Error al insertar carrito temporal:", insertError);
-      return res.status(500).json({ error: 'Error al guardar carrito temporal', detalle: insertError.message });
-    }
-
-    console.log("✅ Carrito temporal guardado correctamente con preference_id:", preferenceId);
+   
     res.json({ id: preferenceId });
 
   } catch (error) {
@@ -154,8 +133,7 @@ app.post('/create_preference', async (req, res) => {
 
 app.get('/orden', (req, res) => {
   res.status(405).send('Método no permitido. Este endpoint es solo para POST de MercadoPago.');
-});
-
+}); 
 
 // 📩 Webhook
 app.post('/orden', async (req, res) => {
@@ -163,8 +141,6 @@ app.post('/orden', async (req, res) => {
   try {
     const { type, action, data } = req.body;
     const id = data?.id;
-
-
 
     console.log('📩 Webhook recibido en /orden:', req.body);
 
@@ -178,8 +154,6 @@ app.post('/orden', async (req, res) => {
       console.warn(`⚠️ Webhook ignorado: type=${type}, action=${action}`);
       return res.sendStatus(200);
     }  
-
-    console.log("el iddd",id)
 
     const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN;
 
@@ -196,6 +170,11 @@ app.post('/orden', async (req, res) => {
 
     console.log('aca esta el pago ',pago)
 
+    // Nueva validación: solo seguimos si el pago está aprobado
+    if (pago.status !== 'approved') {
+      console.warn('⛔️ Pago no aprobado, no se procesa carrito ni pedido');
+      return res.sendStatus(200);
+    }
    
     // 🔎 Obtener external_reference desde pago o desde la orden
     let externalReference = pago.external_reference;
@@ -219,13 +198,37 @@ app.post('/orden', async (req, res) => {
       return res.status(400).json({ error: 'Falta external_reference' });
     }
 
-    // 🧾 Buscar el carrito temporal por external_reference (NO preference_id)
-         const { data: carritoTemp, error: errorTemp } = await supabase
-         .from('carritos_temporales')
-         .select('*')
-         .eq('external_reference', externalReference)
-         .limit(1)
-         .maybeSingle(); // ✅ más seguro que single()
+    // Insertar carrito temporal en el webhook (solo si pago aprobado)
+    const carrito = pago.metadata?.carrito;
+    const userId = pago.metadata?.user_id;
+    const total = pago.metadata?.total;
+
+    if (!carrito || !userId || !total) {
+      console.error("❌ Metadata incompleta en el pago");
+      return res.status(400).json({ error: 'Metadata incompleta en el pago' });
+    }
+
+    const { error: insertCarritoError } = await supabase.from('carritos_temporales').insert([{
+      preference_id: pago.preference_id,
+      external_reference: externalReference,
+      carrito,
+      user_id: userId,
+      total,
+      fecha_creacion: new Date().toISOString()
+    }]);
+
+    if (insertCarritoError) {
+      console.error('❌ Error al insertar carrito temporal:', insertCarritoError);
+      return res.status(500).json({ error: 'Error al guardar carrito temporal', detalle: insertCarritoError.message });
+    }
+
+    // Buscar carrito temporal recién insertado para continuar con pedido
+    const { data: carritoTemp, error: errorTemp } = await supabase
+      .from('carritos_temporales')
+      .select('*')
+      .eq('external_reference', externalReference)
+      .limit(1)
+      .maybeSingle();
 
     if (errorTemp || !carritoTemp) {
       console.error('❌ No se encontró carrito temporal:', errorTemp);
@@ -233,28 +236,27 @@ app.post('/orden', async (req, res) => {
     }
 
     // --- resto del código igual ---
-    const carrito = carritoTemp.carrito;
-    const total = carritoTemp.total;
-    const userId = carritoTemp.user_id; // ✅ ahora sí tenemos el usuario correcto
+    const carritoDb = carritoTemp.carrito;
+    const totalDb = carritoTemp.total;
+    const userIdDb = carritoTemp.user_id;
 
-    console.log('💰 total:', total);
-    console.log('🛒 carrito:', carrito);
+    console.log('💰 total:', totalDb);
+    console.log('🛒 carrito:', carritoDb);
     console.log("external referenceeee", externalReference) 
 
     
-   await supabase
-  .from('pedidos')
-  .delete()
-  .eq('preference_id', externalReference);
-    
+    await supabase
+      .from('pedidos')
+      .delete()
+      .eq('preference_id', externalReference);
 
     const { data: pedidoInsertado, error: errorPedido } = await supabase
       .from('pedidos')
       .insert([{
-        usuario_id:userId,
-        total,
+        usuario_id: userIdDb,
+        total: totalDb,
         estado: 'pagado',
-        preference_id:carritoTemp.preference_id,
+        preference_id: carritoTemp.preference_id,
         fecha_creacion: new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString()
       }])
@@ -268,83 +270,82 @@ app.post('/orden', async (req, res) => {
 
     const pedido_id = pedidoInsertado.pedido_id;
 
-    for (const item of carrito) {
-  const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
-  console.log(producto_id, "producto_id");
-  console.log(color_id, "color_id");
-  console.log(talle_id, "talle_id");
-  console.log(cantidad, "cantidad");
-  console.log(unit_price, "precio");
+    for (const item of carritoDb) {
+      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+      console.log(producto_id, "producto_id");
+      console.log(color_id, "color_id");
+      console.log(talle_id, "talle_id");
+      console.log(cantidad, "cantidad");
+      console.log(unit_price, "precio");
 
-  // 🔍 Obtener producto con todas sus variantes
-  const { data: productosConVariantes, error: errorProducto } = await supabase
-    .from('productos')
-    .select('producto_id, productos_variantes (variante_id, stock, color_id, talle_id)')
-    .eq('producto_id', producto_id)
-    .maybeSingle();
+      // 🔍 Obtener producto con todas sus variantes
+      const { data: productosConVariantes, error: errorProducto } = await supabase
+        .from('productos')
+        .select('producto_id, productos_variantes (variante_id, stock, color_id, talle_id)')
+        .eq('producto_id', producto_id)
+        .maybeSingle();
 
-  if (errorProducto || !productosConVariantes) {
-    console.error('❌ Error al obtener producto con variantes:', errorProducto);
-    continue;
-  }
+      if (errorProducto || !productosConVariantes) {
+        console.error('❌ Error al obtener producto con variantes:', errorProducto);
+        continue;
+      }
 
-    // 📦 Unir todas las variantes del producto
-    const todasLasVariantes = productosConVariantes.productos_variantes; 
+      // 📦 Unir todas las variantes del producto
+      const todasLasVariantes = productosConVariantes.productos_variantes; 
 
       if (!Array.isArray(todasLasVariantes)) {
-    console.error("⚠️ productos_variantes no es un array:", todasLasVariantes);
-    continue;
-  }
+        console.error("⚠️ productos_variantes no es un array:", todasLasVariantes);
+        continue;
+      }
 
-  
-    // 🧠 Buscar variante correcta por color_id y talle_id
-    const variante = todasLasVariantes.find(
-      v => v.color_id.toString().trim() === color_id.toString().trim()  && v.talle_id.toString().trim()  === talle_id.toString().trim() 
-    );
-  
-    if (!variante) {
-      console.warn('⚠️ No se encontró variante para:', item);
-      continue;
+      // 🧠 Buscar variante correcta por color_id y talle_id
+      const variante = todasLasVariantes.find(
+        v => v.color_id.toString().trim() === color_id.toString().trim()  && v.talle_id.toString().trim()  === talle_id.toString().trim() 
+      );
+
+      if (!variante) {
+        console.warn('⚠️ No se encontró variante para:', item);
+        continue;
+      }
+
+      const nuevoStock = variante.stock - cantidad;
+
+      if (nuevoStock < 0) {
+        console.warn('⚠️ Stock insuficiente para producto', producto_id);
+        continue;
+      }
+
+      // 📉 Actualizar stock
+      const { error: errorUpdate } = await supabase
+        .from('productos_variantes')
+        .update({ stock: nuevoStock })
+        .eq('variante_id', variante.variante_id);
+
+      if (errorUpdate) {
+        console.error('❌ Error al actualizar stock:', errorUpdate);
+        continue;
+      }
+
+      // 🧾 Insertar en detalle_pedidos
+      await supabase.from('detalle_pedidos').insert([{
+        pedido_id,
+        variante_id: variante.variante_id,
+        cantidad,
+        precio_unitario: unit_price
+      }]);
     }
-  
-    const nuevoStock = variante.stock - cantidad;
-  
-    if (nuevoStock < 0) {
-      console.warn('⚠️ Stock insuficiente para producto', producto_id);
-      continue;
-    }
-  
-    // 📉 Actualizar stock
-    const { error: errorUpdate } = await supabase
-      .from('productos_variantes')
-      .update({ stock: nuevoStock })
-      .eq('variante_id', variante.variante_id);
-  
-    if (errorUpdate) {
-      console.error('❌ Error al actualizar stock:', errorUpdate);
-      continue;
-    }
-  
-    // 🧾 Insertar en detalle_pedidos
-    await supabase.from('detalle_pedidos').insert([{
-      pedido_id,
-      variante_id: variante.variante_id,
-      cantidad,
-      precio_unitario: unit_price
-    }]);
-  }
  
-  console.log(externalReference)
- const { error: errorDelete } = await supabase
-  .from('carritos_temporales')
-  .delete()
-  .eq('external_reference', externalReference);
+    console.log(externalReference)
+    const { error: errorDelete } = await supabase
+      .from('carritos_temporales')
+      .delete()
+      .eq('external_reference', externalReference);
 
-if (errorDelete) {
-  console.error('❌ Error al borrar carrito temporal:', errorDelete);
-} else {
-  console.log('✅ Carrito temporal borrado correctamente.');
-}
+    if (errorDelete) {
+      console.error('❌ Error al borrar carrito temporal:', errorDelete);
+    } else {
+      console.log('✅ Carrito temporal borrado correctamente.');
+    }
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
     return res.sendStatus(200);
