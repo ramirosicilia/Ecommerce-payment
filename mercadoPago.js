@@ -331,29 +331,33 @@ app.post('/orden', async (req, res) => {
       variante_id: variante.variante_id,
       cantidad,
       precio_unitario: unit_price
-    }]);
-  }
- 
-      console.log(externalReference)
-     const { data: carritos, error: errorConsulta } = await supabase
-      .from('carritos_temporales')
-      .select('*');
-    
-    console.log('🧾 Carritos a borrar:', carritos?.length);
-    
-    const { error: errorDelete } = await supabase
-      .from('carritos_temporales')
-      .delete()
-      .not('external_reference', 'is', null);
-    
-    if (errorDelete) {
-      console.error('❌ Error al borrar carritos:', errorDelete);
-    } else {
-      console.log('✅ Carritos temporales eliminados.');
+      }]);
     }
+  
+       console.log(externalReference)
+     const { data: carritoABorrar, error: errorConsultaBorrado } = await supabase
+    .from('carritos_temporales')
+    .select('*')
+    .eq('external_reference', externalReference)
+    .maybeSingle();
 
-    console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
-    return res.sendStatus(200);
+  console.log("🔍 Carrito a borrar:", carritoABorrar);
+
+  if (!carritoABorrar) {
+    console.warn("⚠️ No se encontró el carrito temporal con ese external_reference.");
+  } 
+  console.log("🔗 externalReference (borrado):", JSON.stringify(externalReference));
+  console.log("🆔 Tipo de externalReference:", typeof externalReference); 
+
+   const { error: errorDelete } = await supabase
+  .from('carritos_temporales')
+  .delete()
+  .or(`external_reference.eq.${externalReference},preference_id.eq.${carritoTemp.preference_id}`);
+
+
+
+      console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
+      return res.sendStatus(200);
 
   } catch (error) {
     console.error('❌ Error al procesar webhook /orden:');
