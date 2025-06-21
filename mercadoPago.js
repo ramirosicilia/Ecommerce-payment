@@ -5,8 +5,6 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
-import { v4 as uuidv4 } from 'uuid';
-
 
 
 const app = express();  
@@ -115,16 +113,21 @@ app.post('/create_preference', async (req, res) => {
 
 
     console.log("🟢 preferenceId:", preferenceId);
-
+  
     console.log("🟢 carritoFormateado:", carritoFormateado);
     console.log("🟢 total:", total);
 
-    
-   const referenciaUnica = uuidv4();
+    // Validar UUID
+        await supabase
+      .from('carritos_temporales')
+      .delete()
+      .eq('external_reference', userId);
+
+   
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
-       external_reference: referenciaUnica, // ✅ AGREGA ESTO
+       external_reference: userId, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
