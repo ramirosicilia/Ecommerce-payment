@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
+import { v4 as uuidv4 } from 'uuid';
+
 
 
 const app = express();  
@@ -78,10 +80,13 @@ app.post('/create_preference', async (req, res) => {
     const total = mp.reduce(
       (acc, item) => acc + (Number(item.unit_price) * Number(item.quantity)),
       0
-    );
+    ); 
+    // ✅ Generar un external_reference único
+     const externalReference = uuidv4();
+
 
     const preferenceBody = {
-      external_reference: userId, //
+      external_reference: externalReference, //
       items: mp.map(item => ({
         id: item.producto_id,
         title: item.name,
@@ -127,7 +132,7 @@ app.post('/create_preference', async (req, res) => {
 
     const { error: insertError } = await supabase.from('carritos_temporales').insert([{
       preference_id: preferenceId,
-       external_reference: userId, // ✅ AGREGA ESTO
+       external_reference: externalReference, // ✅ AGREGA ESTO
       carrito: carritoFormateado,
       total,
       fecha_creacion: new Date().toISOString()
@@ -236,7 +241,10 @@ app.post('/orden', async (req, res) => {
     console.log("external referenceeee", externalReference) 
 
     
-
+   await supabase
+  .from('pedidos')
+  .delete()
+  .eq('preference_id', externalReference);
     
 
     const { data: pedidoInsertado, error: errorPedido } = await supabase
@@ -245,6 +253,7 @@ app.post('/orden', async (req, res) => {
         usuario_id:externalReference,
         total,
         estado: 'pagado',
+        preference_id:carritoTemp.preference_id,
         fecha_creacion: new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString()
       }])
