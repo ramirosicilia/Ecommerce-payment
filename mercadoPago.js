@@ -209,7 +209,7 @@ app.post('/orden', async (req, res) => {
     }
 
     const { error: insertCarritoError } = await supabase.from('carritos_temporales').insert([{
-      preference_id: pago.preference_id,
+      preference_id: externalReference,
       external_reference: externalReference,
       carrito,
       user_id: userId,
@@ -256,7 +256,7 @@ app.post('/orden', async (req, res) => {
         usuario_id: userIdDb,
         total: totalDb,
         estado: 'pagado',
-        preference_id: carritoTemp.preference_id,
+        preference_id: externalReference,
         fecha_creacion: new Date().toISOString(),
         fecha_actualizacion: new Date().toISOString()
       }])
