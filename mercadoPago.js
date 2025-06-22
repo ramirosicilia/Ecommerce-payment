@@ -297,12 +297,14 @@ if (pagoInsertError) {
       console.log(cantidad, "cantidad");
       console.log(unit_price,"precio");
 
-      // 🔍 Obtener producto con todas sus variantes
-      const { data: productosConVariantes, error: errorProducto } = await supabase
-        .from('productos')
-        .select('producto_id, productos_variantes (variante_id, stock, insertar_color, insertar_talle)')
-        .eq('producto_id', producto_id)
-        .maybeSingle();
+    const { data: productosConVariantes, error: errorProducto } = await supabase
+  .from('productos')
+  .select(`
+    producto_id,
+    productos_variantes (  variante_id, stock, colores (insertar_color),talles ( insertar_talle ))
+  `)
+  .eq('producto_id', producto_id)
+  .maybeSingle();
 
       if (errorProducto || !productosConVariantes) {
         console.error('❌ Error al obtener producto con variantes:', errorProducto);
@@ -317,12 +319,19 @@ if (pagoInsertError) {
         continue;
       }
 
-      // 🧠 Buscar variante correcta por color_id y talle_id
-     const variante = todasLasVariantes.find(v => {
-  const matchColor = color_nombre ? v.color_nombre?.toString().trim() === color_nombre.toString().trim() : true;
-  const matchTalle = talle_nombre ? v.talle_nombre?.toString().trim() === talle_nombre.toString().trim() : true;
-  return matchColor && matchTalle;
-});
+          // 🧠 Buscar variante correcta por color_id y talle_id
+         const variante = todasLasVariantes.find(v => {
+      const matchColor = color_nombre
+        ? v.colores?.insertar_color?.toString().trim().toLowerCase() === color_nombre.toString().trim().toLowerCase()
+        : true;
+        
+      const matchTalle = talle_nombre
+        ? v.talles?.insertar_talle?.toString().trim().toLowerCase() === talle_nombre.toString().trim().toLowerCase()
+        : true;
+        
+      return matchColor && matchTalle;
+    });
+
 
       if (!variante) {
         console.warn('⚠️ No se encontró variante para:', item);
