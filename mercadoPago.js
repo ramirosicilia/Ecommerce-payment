@@ -166,7 +166,25 @@ app.post('/orden', async (req, res) => {
       }
     );
 
-    const pago = mpResponse.data; 
+    const pago = mpResponse.data;  
+
+    const { status, id: payment_id, transaction_amount, external_reference, metadata } = pago;
+
+const { error: pagoInsertError } = await supabase
+  .from('pagos')
+  .insert([{
+    pago_id: uuidv4(), // porque es UUID
+    payment_id: Number(payment_id), // bigint
+    status, // string
+    preference_id: external_reference || null, // string
+    transaction_amount: Number(transaction_amount), // number
+    usuario_id: metadata?.user_id || null, // string (UUID)
+  }]);
+
+if (pagoInsertError) {
+  console.error('❌ Error al registrar el pago en la tabla pagos:', pagoInsertError);
+}
+
 
     console.log('aca esta el pago ',pago)
 
@@ -210,6 +228,7 @@ app.post('/orden', async (req, res) => {
 
     const { error: insertCarritoError } = await supabase.from('carritos_temporales').insert([{
     
+
       external_reference: externalReference,
       carrito,
       user_id: userId,
@@ -276,7 +295,7 @@ app.post('/orden', async (req, res) => {
       console.log(color_id, "color_id");
       console.log(talle_id, "talle_id");
       console.log(cantidad, "cantidad");
-      console.log(unit_price, "precio");
+      console.log(unit_price,"precio");
 
       // 🔍 Obtener producto con todas sus variantes
       const { data: productosConVariantes, error: errorProducto } = await supabase
