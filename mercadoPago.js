@@ -70,8 +70,8 @@ app.post('/create_preference', async (req, res) => {
 
     const carritoFormateado = mp.map(item => ({
       producto_id: item.producto_id,
-      color_nombre: item.color,
-      talle_nombre: item.talle,
+      color_nombre: item.color_nombre,
+      talle_nombre: item.talle_nombre,
       cantidad: item.quantity,
       unit_price: item.unit_price,
        currency_id: "ARS",
