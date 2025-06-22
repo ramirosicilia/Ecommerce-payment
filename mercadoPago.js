@@ -328,17 +328,11 @@ if (pagoInsertError) {
       }
 
           // 🧠 Buscar variante correcta por color_id y talle_id
-         const variante = todasLasVariantes.find(v => {
-      const matchColor = color_nombre
-        ? v.colores?.insertar_color?.toString().trim().toLowerCase() === color_nombre.toString().trim().toLowerCase()
-        : true;
-        
-      const matchTalle = talle_nombre
-        ? v.talles?.insertar_talle?.toString().trim().toLowerCase() === talle_nombre.toString().trim().toLowerCase()
-        : true;
-        
-      return matchColor && matchTalle;
-    });
+          const variante = todasLasVariantes.find(v =>
+        (!color_nombre || v.colores?.insertar_color?.trim().toLowerCase() === color_nombre.trim().toLowerCase()) &&
+        (!talle_nombre || v.talles?.insertar_talle?.trim().toLowerCase() === talle_nombre.trim().toLowerCase())
+      );
+
 
 
       if (!variante) {
