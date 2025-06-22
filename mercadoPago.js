@@ -70,8 +70,8 @@ app.post('/create_preference', async (req, res) => {
 
     const carritoFormateado = mp.map(item => ({
       producto_id: item.producto_id,
-      color_id: item.color_id,
-      talle_id: item.talle_id,
+      color_nombre: item.color,
+      talle_nombre: item.talle,
       cantidad: item.quantity,
       unit_price: item.unit_price,
        currency_id: "ARS",
@@ -290,17 +290,17 @@ if (pagoInsertError) {
     const pedido_id = pedidoInsertado.pedido_id;
 
     for (const item of carritoDb) {
-      const { producto_id, color_id, talle_id, cantidad, unit_price } = item;
+      const { producto_id, color_nombre, talle_nombre, cantidad, unit_price } = item;
       console.log(producto_id, "producto_id");
-      console.log(color_id, "color_id");
-      console.log(talle_id, "talle_id");
+      console.log(color_nombre, "color_nombre");
+      console.log(talle_nombre, "talle_nombre");
       console.log(cantidad, "cantidad");
       console.log(unit_price,"precio");
 
       // 🔍 Obtener producto con todas sus variantes
       const { data: productosConVariantes, error: errorProducto } = await supabase
         .from('productos')
-        .select('producto_id, productos_variantes (variante_id, stock, color_id, talle_id)')
+        .select('producto_id, productos_variantes (variante_id, stock, insertar_color, insertar_talle)')
         .eq('producto_id', producto_id)
         .maybeSingle();
 
@@ -318,9 +318,11 @@ if (pagoInsertError) {
       }
 
       // 🧠 Buscar variante correcta por color_id y talle_id
-      const variante = todasLasVariantes.find(
-        v => v.color_id.toString().trim() === color_id.toString().trim()  && v.talle_id.toString().trim()  === talle_id.toString().trim() 
-      );
+     const variante = todasLasVariantes.find(v => {
+  const matchColor = color_nombre ? v.color_nombre?.toString().trim() === color_nombre.toString().trim() : true;
+  const matchTalle = talle_nombre ? v.talle_nombre?.toString().trim() === talle_nombre.toString().trim() : true;
+  return matchColor && matchTalle;
+});
 
       if (!variante) {
         console.warn('⚠️ No se encontró variante para:', item);
