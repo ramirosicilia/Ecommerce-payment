@@ -209,7 +209,7 @@ app.post('/orden', async (req, res) => {
     }
 
     const { error: insertCarritoError } = await supabase.from('carritos_temporales').insert([{
-      preference_id: externalReference,
+    
       external_reference: externalReference,
       carrito,
       user_id: userId,
