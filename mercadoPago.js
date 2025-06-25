@@ -422,7 +422,7 @@ if (pagoInsertError) {
     res.json({error:'no se pudieron obtener los pagos'})
 
   } 
-  res.json({data:pagosMP})
+  res.json(pagosMP.data)
           
 
  })
