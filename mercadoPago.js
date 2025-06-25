@@ -38,7 +38,9 @@ const client = new MercadoPagoConfig({
 
 const preference = new Preference(client);
 
-console.log("token", process.env.MERCADO_PAGO_ACCESS_TOKEN);
+console.log("token", process.env.MERCADO_PAGO_ACCESS_TOKEN); 
+
+const token=process.env.MERCADO_PAGO_ACCESS_TOKEN
 
 app.get('/', (req, res) => {
   res.send('soy el server');
@@ -365,7 +367,8 @@ if (pagoInsertError) {
         cantidad,
         precio_unitario: unit_price
       }]);
-    }
+    } 
+    
  
     console.log(externalReference)
     const { error: errorDelete } = await supabase
@@ -388,7 +391,41 @@ if (pagoInsertError) {
     console.error('Stack:', error.stack);
     return res.status(500).json({ error: 'Error interno', detalle: error.message });
   }
-});
+}); 
+
+ app.get("/token-mercadopago",(req,res)=>{ 
+
+  //CUANDO SON ENPOINT SIMPLES CON POCO CONTENIDO Y DATOS POR COMODIDAD NO USO TRY CATCH PERO QUEDA EN CRITERIO DE CADA UNO
+
+  if(!token){ 
+
+    res.json({error:"falta el token"})
+
+  } 
+
+    res.json(token)
+ 
+ }) 
+
+ app.get("/pagos-mercadopago",async(req,res)=>{ 
+
+
+  const pagosMP= await supabase.from("pagos").select("*")
+
+   //CUANDO SON ENPOINT SIMPLES CON POCO CONTENIDO Y DATOS POR COMODIDAD NO USO TRY CATCH PERO QUEDA EN CRITERIO DE CADA UNO
+  
+/*let { data: pagos} = await supabase
+  .from('pagos')
+  .select('*') */
+
+  if(pagosMP.data.length===0){ 
+    res.json({error:'no se pudieron obtener los pagos'})
+
+  } 
+  res.json({data:pagosMP})
+          
+
+ })
 
 
 
