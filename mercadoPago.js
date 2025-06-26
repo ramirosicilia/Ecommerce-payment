@@ -428,6 +428,23 @@ if (pagoInsertError) {
 
 
 
+ app.get("/pedidos",async(req,res)=>{ 
+
+
+  const pedidos= await supabase.from("pedidos").select("*")
+
+   //CUANDO SON ENPOINT SIMPLES CON POCO CONTENIDO Y DATOS POR COMODIDAD NO USO TRY CATCH PERO QUEDA EN CRITERIO DE CADA UNO
+ 
+
+  if(pedidos.data.length===0){ 
+    res.json({error:'no se pudieron obtener los pagos'})
+
+  } 
+  res.json(pedidos.data)
+          
+
+ }) 
+
  app.get("/detalles-productos",async(req,res)=>{ 
 
 
@@ -444,6 +461,8 @@ if (pagoInsertError) {
           
 
  })
+
+
 
 
 
