@@ -426,7 +426,9 @@ if (pagoInsertError) {
 
  }) 
 
- app.get("/detalles-productos",async(req,res)=>{ 
+ 
+
+ app.get("/detalles_productos",async(req,res)=>{ 
 
 
   const detalles= await supabase.from("detalle_pedidos").select("*")
