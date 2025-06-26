@@ -108,7 +108,7 @@ app.post('/create_preference', async (req, res) => {
         failure: `${process.env.URL_FRONT}/productosUsuario.html`,
         pending: `${process.env.URL_FRONT}/productosUsuario.html`
       },
-      auto_return: "approved"
+      auto_return:"approved"
     };
 
     const result = await preference.create({ body: preferenceBody }); 
@@ -426,6 +426,7 @@ if (pagoInsertError) {
           
 
  }) 
+ 
 
 
 
