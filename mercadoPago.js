@@ -426,22 +426,27 @@ if (pagoInsertError) {
 
  }) 
 
- app.get("/detalles-productos",async(req,res)=>{ 
+ app.get("/detalles-productos", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("detalle-pedidos")
+      .select("*");
 
+    if (error) {
+      console.error("Error al consultar Supabase:", error.message);
+      return res.status(500).json({ error: "Error al obtener los detalles del pedido" });
+    }
 
-  const detalles= await supabase.from("detalle-pedidos").select("*")
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: "No se encontraron detalles de productos" });
+    }
 
-   //CUANDO SON ENPOINT SIMPLES CON POCO CONTENIDO Y DATOS POR COMODIDAD NO USO TRY CATCH PERO QUEDA EN CRITERIO DE CADA UNO
- 
-
-  if(detalles.data.length===0){ 
-    res.json({error:'no se pudieron obtener los pagos'})
-
-  } 
-  res.json(detalles.data)
-          
-
- })
+    res.json(data);
+  } catch (err) {
+    console.error("Excepción inesperada:", err.message);
+    res.status(500).json({ error: "Error inesperado al procesar la solicitud" });
+  }
+});
 
 
 
