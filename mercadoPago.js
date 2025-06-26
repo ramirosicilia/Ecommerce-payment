@@ -287,7 +287,6 @@ if (pagoInsertError) {
         estado: 'pagado',
         preference_id: externalReference,
         fecha_creacion: new Date().toISOString(),
-        fecha_actualizacion: new Date().toISOString()
       }])
       .select('pedido_id')
       .single();
@@ -423,6 +422,23 @@ if (pagoInsertError) {
 
   } 
   res.json(pagosMP.data)
+          
+
+ }) 
+
+ app.get("/detalles-productos",async(req,res)=>{ 
+
+
+  const detalles= await supabase.from("detalle-pedidos").select("*")
+
+   //CUANDO SON ENPOINT SIMPLES CON POCO CONTENIDO Y DATOS POR COMODIDAD NO USO TRY CATCH PERO QUEDA EN CRITERIO DE CADA UNO
+ 
+
+  if(detalles.data.length===0){ 
+    res.json({error:'no se pudieron obtener los pagos'})
+
+  } 
+  res.json(detalles.data)
           
 
  })
