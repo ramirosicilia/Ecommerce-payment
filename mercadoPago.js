@@ -349,7 +349,7 @@ if (pagoInsertError) {
       }
 
       // 📉 Actualizar stock
-      const { error: errorUpdate } = await supabase
+      const { error: errorUpdate } = await supabase 
         .from('productos_variantes')
         .update({ stock: nuevoStock })
         .eq('variante_id', variante.variante_id);
@@ -360,10 +360,11 @@ if (pagoInsertError) {
       }
 
       // 🧾 Insertar en detalle_pedidos
-      await supabase.from('detalle_pedidos').insert([{
+      await supabase.from('detalle_pedidos').insert([{ 
         pedido_id,
         variante_id: variante.variante_id,
         cantidad,
+        producto_id,
         precio_unitario: unit_price
       }]);
     } 
