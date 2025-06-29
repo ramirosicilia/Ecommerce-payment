@@ -18,7 +18,7 @@ export async function validarMail(pedidoID, carritoFinal, email, total,fecha) {
     return transportes.sendMail({
         from: process.env.USER_EMAIL,
         to: email, 
-        subject: 'Hola, este es un mail de recuperacion de cuenta!!!',
+        subject: 'Hola,aqui le enviamos el detalle de su compra!!!',
         html: cuerpoMail(pedidoID, carritoFinal, email, total,fecha)
     });
 }  
