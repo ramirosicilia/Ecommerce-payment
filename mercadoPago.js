@@ -6,6 +6,7 @@ import { MercadoPagoConfig, Preference } from 'mercadopago';
 import axios from 'axios'; // <-- Asegurate de instalar esto con: npm install axios
 import { supabase } from './DB.js';
 import { v4 as uuidv4 } from 'uuid';
+import { validarMail } from './email.js';
 
 
 
@@ -297,6 +298,7 @@ if (pagoInsertError) {
     }
 
     const pedido_id = pedidoInsertado.pedido_id;
+    let productsID=null
 
     for (const item of carritoDb) {
       const { producto_id, color_nombre, talle_nombre, cantidad, unit_price } = item;
@@ -305,6 +307,7 @@ if (pagoInsertError) {
       console.log(talle_nombre, "talle_nombre");
       console.log(cantidad, "cantidad");
       console.log(unit_price,"precio");
+     
 
     const { data: productosConVariantes, error: errorProducto } = await supabase
   .from('productos')
@@ -358,6 +361,10 @@ if (pagoInsertError) {
         console.error('❌ Error al actualizar stock:', errorUpdate);
         continue;
       }
+     
+      
+
+
 
       // 🧾 Insertar en detalle_pedidos
       await supabase.from('detalle_pedidos').insert([{ 
@@ -366,23 +373,19 @@ if (pagoInsertError) {
         cantidad,
         producto_id,
         precio_unitario: unit_price
-      }]);
+      }]); 
+
+        productsID=producto_id
     } 
     
  
     console.log(externalReference)
-    const { error: errorDelete } = await supabase
-      .from('carritos_temporales')
-      .delete()
-      .eq('external_reference', externalReference);
-
-    if (errorDelete) {
-      console.error('❌ Error al borrar carrito temporal:', errorDelete);
-    } else {
-      console.log('✅ Carrito temporal borrado correctamente.');
-    }
+   
 
     console.log(`✅ Pedido ${pedido_id} registrado correctamente.`);
+
+      await obtencionDataEmail(pedido_id,carritoDb,total,userId)
+     
     return res.sendStatus(200);
 
   } catch (error) {
@@ -462,8 +465,70 @@ if (pagoInsertError) {
   res.json(detalles.data)
           
 
- })
+ }) 
 
+
+ async function obtencionDataEmail(pedidoID, carrito, total, userId) {
+  // 1. Obtener email del usuario
+  const { data: emailData, error: errorEmail } = await supabase
+    .from("usuarios")
+    .select('email')
+    .eq('usuario_id', userId)
+    .single();
+
+  if (errorEmail) {
+    console.error("Error al obtener email:", errorEmail);
+    return;
+  }
+
+  // 2. Obtener nombre del producto para cada item del carrito
+  const carritoMapeado = await Promise.all(
+    carrito.map(async (item) => {
+      const { data: productoData, error: errorProducto } = await supabase
+        .from("productos")
+        .select("nombre_producto")
+        .eq("producto_id", item.producto_id)
+        .single();
+
+      if (errorProducto) {
+        console.error(`Error al obtener producto ${item.producto_id}:`, errorProducto);
+        return null;
+      }
+
+      return {
+        nombre: productoData.nombre_producto,
+        talle: item.talle_nombre,
+        color: item.color_nombre,
+        cantidad: item.cantidad,
+        precio: item.unit_price,
+        subtotal: item.unit_price * item.cantidad
+      };
+    }) 
+  ); 
+
+
+  // Filtrar cualquier item nulo por error de consulta
+  const carritoFinal = carritoMapeado.filter(item => item !== null); 
+  const { data: fechaData, error: errorFecha } = await supabase
+  .from("pedidos")
+  .select("fecha_creacion")
+  .eq("pedido_id", pedidoID)
+  .single();
+
+if (errorFecha) {
+  console.error("Error al obtener fecha del pedido:", errorFecha);
+  return;
+}
+
+// 3.2 Formatear fecha a formato argentino
+const fechaOriginal = new Date(fechaData.fecha_creacion);
+const fechaFormateada = fechaOriginal.toLocaleDateString('es-AR');  // ej: 03/11/2025
+const horaFormateada = fechaOriginal.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); // ej: 14:35
+const fechaCompleta = `${fechaFormateada} - ${horaFormateada}`;
+
+  // 3. Llamar a función final
+  await validarMail(pedidoID, carritoFinal, emailData.email, total,fechaCompleta);
+}
 
 
 
