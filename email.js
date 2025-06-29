@@ -146,7 +146,7 @@ function cuerpoMail(pedidoID, carritoFinal, email, total, fechaCompleta) {
         <p class="total">Total del pedido: $${total}</p>
       </div>
       <div class="email-footer">
-        &copy; 2025 Moto2 Belgrano · Todos los derechos reservados.
+        &copy;Ecommerce · Todos los derechos reservados.
       </div>
     </div>
   </body>
